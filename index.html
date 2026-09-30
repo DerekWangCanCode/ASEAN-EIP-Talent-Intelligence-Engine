@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Talent Strategy Hub for ASEAN EIP</title>
+<link rel="stylesheet" href="assets/styles.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌏</text></svg>">
+</head>
+<body>
+
+<aside class="sidebar">
+  <div class="brand">
+    <div class="brand-mark">TS</div>
+    <div>
+      <div class="brand-name">Talent Strategy Hub</div>
+      <div class="brand-sub">for ASEAN EIP</div>
+    </div>
+  </div>
+
+  <nav id="nav">
+    <div class="nav-section"><span class="ns-n">A</span>Market Intelligence</div>
+    <a class="nav-item active" data-view="overview"><span class="ni">🌏</span>ASEAN Overview</a>
+    <a class="nav-item" data-view="country"><span class="ni">📍</span>Country Profiles</a>
+    <div class="nav-sub" id="navCountries"></div>
+
+    <div class="nav-section"><span class="ns-n">B</span>Talent Discovery</div>
+    <a class="nav-item" data-view="engine" data-tab="dashboard"><span class="ni">📊</span>Talent Discovery Dashboard</a>
+    <a class="nav-item" data-view="engine" data-tab="search"><span class="ni">🔎</span>Hidden Talent Search</a>
+    <a class="nav-item" data-view="engine" data-tab="copilot"><span class="ni">🧠</span>Talent Intelligence Copilot<span class="ni-flag">Flagship</span></a>
+  </nav>
+
+  <div class="side-foot">
+    <div class="disclaimer">Every figure in this prototype is mock planning data. Validate before contractual use.</div>
+  </div>
+</aside>
+
+<main class="main">
+
+  <!-- ===================== JOURNEY RIBBON ===================== -->
+  <div class="journey" id="journey">
+    <div class="jn-step" data-step="1" data-go="overview">
+      <span class="jn-n">1</span>
+      <span class="jn-b"><b>Know the Market</b><i>Where should we hire?</i></span>
+    </div>
+    <span class="jn-arrow">→</span>
+    <div class="jn-step" data-step="2" data-go="search">
+      <span class="jn-n">2</span>
+      <span class="jn-b"><b>Discover Talent</b><i>Who should we hire?</i></span>
+    </div>
+    <span class="jn-arrow">→</span>
+    <div class="jn-step" data-step="3" data-go="copilot">
+      <span class="jn-n">3</span>
+      <span class="jn-b"><b>Take Action</b><i>What do I do next?</i></span>
+    </div>
+  </div>
+
+  <!-- ===================== SECTION A · MARKET INTELLIGENCE ===================== -->
+
+  <!-- ============================= ASEAN OVERVIEW ============================= -->
+  <section class="view fluent active" id="view-overview">
+    <header class="page-head">
+      <div>
+        <h1>ASEAN Overview</h1>
+        <p class="lead">Executive view of the six ASEAN hiring markets — when students are available, what they
+          cost relative to each other, how contested they are, and how much pipeline your target-school list
+          actually puts in range.</p>
+      </div>
+      <button class="btn ghost" data-export="overview">⬇ Export CSV</button>
+    </header>
+
+    <div class="kpi-row" id="ovKpis"></div>
+
+    <!-- 1 · Academic calendar comparison -->
+    <div class="fpanel">
+      <div class="fpanel-h">
+        <h2>Academic Calendar Comparison</h2>
+        <span class="sub-txt">Internship windows and graduation timing across all six markets</span>
+      </div>
+      <div class="tl-legend">
+        <span><i class="sw" style="background:#31b57a"></i>Internship window</span>
+        <span><i class="sw" style="background:#e0a33c"></i>Graduation / work-ready</span>
+        <span><i class="sw sw-now"></i>Today</span>
+      </div>
+      <div class="tl-wrap"><div class="tl" id="ovTimeline"></div></div>
+      <div class="tl-foot" id="ovTimelineFoot"></div>
+    </div>
+
+    <div class="eng-two">
+      <!-- 2 · Talent market insights -->
+      <div class="fpanel">
+        <div class="fpanel-h">
+          <h2>Talent Market Insights</h2>
+          <span class="sub-txt">Relative bands, not currency figures</span>
+        </div>
+        <div class="table-wrap"><table id="ovMarketTable"></table></div>
+        <p class="tbl-note">Cost and competition are read low-is-good; supply is read high-is-good.
+          Bands are indicative planning signals for a prototype.</p>
+      </div>
+
+      <!-- 3 · Target school coverage -->
+      <div class="fpanel">
+        <div class="fpanel-h">
+          <h2>Target School Coverage</h2>
+          <span class="sub-txt">Estimated reachable pipeline per market</span>
+        </div>
+        <div class="table-wrap"><table id="ovCoverage"></table></div>
+        <p class="tbl-note">Estimated pipeline is the number of relevant final-year students your target-school
+          list puts in range in a normal hiring year.</p>
+      </div>
+    </div>
+
+    <!-- 4 · AI market insights -->
+    <div class="fpanel">
+      <div class="fpanel-h">
+        <h2>AI Market Insights</h2>
+        <span class="ai-badge">✨ Generated from the market model</span>
+      </div>
+      <div class="ai-grid" id="ovInsights"></div>
+    </div>
+  </section>
+
+  <!-- ============================= COUNTRY PROFILES ============================= -->
+  <section class="view fluent" id="view-country">
+    <header class="page-head">
+      <div>
+        <h1 id="cpTitle">Country Profiles</h1>
+        <p class="lead" id="cpLead">Recruiter research page for a single market — who to target, when they are
+          available, what the market costs you, and what to do about it.</p>
+      </div>
+      <button class="btn ghost" data-export="country">⬇ Export CSV</button>
+    </header>
+
+    <div class="ctry-picker" id="cpPicker"></div>
+    <div id="cpBody"></div>
+  </section>
+
+  <!-- ===================== SECTION B · TALENT DISCOVERY ===================== -->
+  <section class="view fluent" id="view-engine">
+    <header class="page-head">
+      <div>
+        <h1>Talent Discovery</h1>
+        <p class="lead">Identify, discover and prioritise talent across every ASEAN talent pool. See where the
+          pipeline is thin, surface the qualified people you already hold but overlooked, then act on the
+          recommendations.</p>
+      </div>
+      <button class="btn ghost" id="engExport">⬇ Export</button>
+    </header>
+
+    <div class="pivot" id="engPivot" role="tablist">
+      <button class="pivot-tab active" data-tab="dashboard" role="tab">
+        <span class="pv-n">1</span>Talent Discovery Dashboard</button>
+      <button class="pivot-tab" data-tab="search" role="tab">
+        <span class="pv-n">2</span>Hidden Talent Search</button>
+      <button class="pivot-tab" data-tab="copilot" role="tab">
+        <span class="pv-n">3</span>Talent Intelligence Copilot<span class="pv-flag">Flagship</span></button>
+    </div>
+
+    <!-- =============== TAB 1 · TALENT DISCOVERY DASHBOARD =============== -->
+    <div class="eng-pane active" id="eng-dashboard">
+
+      <div class="eng-h">
+        <div>
+          <h2>Talent Pool Coverage by Country</h2>
+          <p class="sub-txt">Pipeline depth, target-school reach and high-potential density across the six markets.</p>
+        </div>
+        <div class="eng-h-note" id="engAsOf"></div>
+      </div>
+
+      <div class="kpi-row" id="engKpis"></div>
+      <div class="ctry-grid" id="engCountryGrid"></div>
+
+      <div class="eng-h">
+        <div>
+          <h2>Talent Pool Growth &amp; Hidden Talent Opportunities</h2>
+          <p class="sub-txt">Talent volume by profession against the pipeline target for the coming intake,
+            with the qualified people sitting in a different pool called out separately.</p>
+        </div>
+        <div class="eng-h-note">Target = planned hires &times; 4 in pool</div>
+      </div>
+
+      <div class="prof-grid" id="engProfGrid"></div>
+
+      <div class="eng-two">
+        <div class="fpanel">
+          <div class="fpanel-h">
+            <h2>AI Recommendations</h2>
+            <span class="sub-txt" id="engInsightNote"></span>
+          </div>
+          <div class="insight-list" id="engInsights"></div>
+        </div>
+
+        <div class="fpanel">
+          <div class="fpanel-h">
+            <h2>Next Best Actions</h2>
+            <span class="sub-txt">Ranked by impact on the gaps on the left</span>
+          </div>
+          <div class="action-list" id="engActions"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- =============== TAB 2 · HIDDEN TALENT SEARCH =============== -->
+    <div class="eng-pane" id="eng-search">
+
+      <div class="hero-note">
+        <span class="hero-badge">Hidden Talent</span>
+        Every search scans <b id="engCorpusN">0</b> candidates across <b id="engCorpusP">0</b> talent pools —
+        not just the pool that owns the role. Qualified people who already sit in another pool or profession
+        are surfaced separately below.
+      </div>
+
+      <div class="fpanel search-panel">
+        <div class="fpanel-h">
+          <h2>Search across all talent pools</h2>
+          <span class="sub-txt">Job title drives the match profile · the rest are filters</span>
+        </div>
+
+        <div class="search-grid">
+          <label class="field"><span>Job title</span>
+            <input id="engTitle" class="input" list="engTitleList" placeholder="e.g. Software Engineer" autocomplete="off">
+            <datalist id="engTitleList"></datalist>
+          </label>
+
+          <label class="field"><span>School</span>
+            <select id="engUni" class="input"><option value="">Any school</option></select>
+          </label>
+
+          <label class="field"><span>Graduation year</span>
+            <select id="engYear" class="input"><option value="">Any year</option></select>
+          </label>
+
+          <label class="field"><span>Degree</span>
+            <select id="engDegree" class="input"><option value="">Any degree level</option></select>
+          </label>
+
+          <label class="field"><span>Major</span>
+            <select id="engMajor" class="input"><option value="">Any major</option></select>
+          </label>
+
+          <label class="field"><span>Country</span>
+            <select id="engCountry" class="input"><option value="">All ASEAN markets</option></select>
+          </label>
+
+          <label class="field"><span>Talent pool</span>
+            <select id="engPool" class="input"><option value="">All talent pools</option></select>
+          </label>
+
+          <label class="field"><span>Skills</span>
+            <input id="engSkills" class="input" list="engSkillList" placeholder="Comma separated, e.g. Python, Azure" autocomplete="off">
+            <datalist id="engSkillList"></datalist>
+          </label>
+        </div>
+
+        <div class="skill-suggest" id="engSkillChips"></div>
+
+        <div class="search-actions">
+          <button class="btn primary" id="engRun">🔍 Search all pools</button>
+          <button class="btn ghost" id="engReset">Reset</button>
+          <span class="grow"></span>
+          <span class="sub-txt" id="engProfileNote">Try: Software Engineer · 2027 · Python</span>
+        </div>
+      </div>
+
+      <div class="kpi-row kpi-3" id="engSearchKpis"></div>
+
+      <div id="engResults" class="results">
+        <div class="res-block">
+          <div class="res-h">
+            <div class="res-tag res-a">A</div>
+            <div>
+              <h2>Direct Matches <span class="pill" id="engDirectCount">0</span></h2>
+              <p class="sub-txt">Already stored inside the talent pool that owns this role.</p>
+            </div>
+            <span class="grow"></span>
+            <button class="btn sm ghost" data-more="direct" id="engDirectMore" hidden>Show more</button>
+          </div>
+          <div class="cand-grid" id="engDirect"></div>
+        </div>
+
+        <div class="res-block hidden-block">
+          <div class="res-h">
+            <div class="res-tag res-b">B</div>
+            <div>
+              <h2>Hidden Talent Matches <span class="pill warn" id="engHiddenCount">0</span></h2>
+              <p class="sub-txt">Qualified people sitting in a <b>different</b> talent pool or profession. Nobody is working them for this role.</p>
+            </div>
+            <span class="grow"></span>
+            <button class="btn sm ghost" data-more="hidden" id="engHiddenMore" hidden>Show more</button>
+          </div>
+          <div class="pool-origin" id="engHiddenOrigins"></div>
+          <div class="cand-grid" id="engHidden"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- =============== TAB 3 · TALENT INTELLIGENCE COPILOT =============== -->
+    <div class="eng-pane" id="eng-copilot">
+      <div class="cop-wrap">
+        <div class="cop-thread" id="engThread"></div>
+
+        <div class="cop-composer">
+          <div class="cop-sugg" id="engPrompts"></div>
+          <div class="cop-input">
+            <span class="cop-spark">✨</span>
+            <input id="engAsk" class="input" placeholder="Ask about markets, coverage, hidden talent or who to engage next…" autocomplete="off">
+            <button class="btn primary" id="engAskBtn">Ask</button>
+          </div>
+          <p class="disclaim">Answers are computed live from the market model and talent-pool data in this
+            prototype — no external model or API is called, and every number here is mock data.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script src="data/data.js"></script>
+<script src="data/market.js"></script>
+<script src="data/talentpool.js"></script>
+<script src="data/discovery.js"></script>
+<script src="data/engine.js"></script>
+<script src="assets/app.js"></script>
+<script src="assets/market.js"></script>
+<script src="assets/engine.js"></script>
+</body>
+</html>

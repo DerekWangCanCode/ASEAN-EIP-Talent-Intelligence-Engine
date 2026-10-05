@@ -59,11 +59,10 @@ const MARKET_CALENDAR = {
         internText: "Mid-May → early Aug (12–14 weeks). NTU, SUTD and SIT also support 20–24 week attachments from January.",
         gradText: "Coursework ends late May; ceremonies in July. Work-ready from June." },
 
-  MY: { intern: [{ from: 3, to: 4, label: "Short window" },
-                 { from: 7, to: 9, label: "Industrial training" }],
+  MY: { intern: [{ from: 7, to: 9, label: "Industrial training" }],
         grad: { from: 8, to: 10, label: "Aug – Oct" },
         note: "Public universities run Oct→Feb and Mar→Jul; private and AU-linked campuses run Feb and Jul intakes.",
-        internText: "Jul → Sep industrial training (12–16 weeks), plus a shorter Mar → Apr window. UTP runs an 8-month structured placement.",
+        internText: "Jul → Sep industrial training (12–16 weeks). UTP runs an 8-month structured placement.",
         gradText: "Coursework completes in July; convocation Sep–Nov." },
 
   VN: { intern: [{ from: 2, to: 5, label: "Graduation internship" },

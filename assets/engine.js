@@ -387,8 +387,8 @@ function renderDashboard() {
     </div>`;
   }).join("");
 
-  renderInsights();
-  renderActions();
+  renderDashInsights();
+  renderDashActions();
 }
 
 /* ---------- Key insights ---------- */
@@ -459,7 +459,7 @@ function buildInsights() {
   return out;
 }
 
-function renderInsights() {
+function renderDashInsights() {
   const list = buildInsights();
   $("#engInsightNote").textContent = list.filter(i => i.tone === "risk").length + " need a decision";
   $("#engInsights").innerHTML = list.map(i => `
@@ -476,7 +476,7 @@ function renderInsights() {
 /* ---------- Recommended actions ----------
  * Each action is a real handoff: it prefills the search tab or the
  * Copilot, so the dashboard is never a dead end. */
-function buildActions() {
+function buildDashActions() {
   const out = [];
 
   /* Engage the best untouched cohort at the strongest school. Prefer a
@@ -562,8 +562,8 @@ function buildActions() {
   return out;
 }
 
-function renderActions() {
-  const list = buildActions();
+function renderDashActions() {
+  const list = buildDashActions();
   const host = $("#engActions");
   host.innerHTML = "";
   list.forEach(a => {

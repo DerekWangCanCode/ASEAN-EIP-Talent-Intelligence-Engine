@@ -240,14 +240,13 @@ const CALENDAR = {
   },
   MY: {
     system: "Public universities run Oct→Feb and Mar→Jul semesters; private / AU-linked campuses run Feb & Jul intakes.",
-    internWindow: "Jul → Sep (12-16 wks industrial training), plus a shorter Mar → Apr window.",
+    internWindow: "Jul → Sep (12-16 wks industrial training).",
     gradMonth: "Convocation Sep–Nov; coursework completes by July.",
     bands: [
       { label: "Semester 1",        type: "term",   start: 41, end: 52 },
       { label: "Semester 1 cont.",  type: "term",   start: 3,  end: 7 },
       { label: "Mid-sem break",     type: "break",  start: 1,  end: 2 },
       { label: "Exams S1",          type: "exam",   start: 8,  end: 10 },
-      { label: "Short internship window", type: "intern", start: 11, end: 16 },
       { label: "Semester 2",        type: "term",   start: 12, end: 24 },
       { label: "Exams S2",          type: "exam",   start: 25, end: 27 },
       { label: "Industrial training (long)", type: "intern", start: 28, end: 40 },

@@ -1,15 +1,21 @@
 /* ==================================================================
- * SECTION B - TALENT DISCOVERY ENGINE
+ * SECTION B - DISCOVER TALENT / SECTION C - TAKE ACTION
  * ------------------------------------------------------------------
  * Three tabs, one data model:
- *   1 Dashboard                    know the market
- *   2 Search & Hidden Talent       find talent, then find the talent you
- *                                  already had but nobody was working
- *   3 Talent Intelligence Copilot  decide what to do about it
+ *   1 Dashboard                       know the market
+ *   2 Search & Hidden Talent          find talent, then find the talent you
+ *                                     already had but nobody was working
+ *   3 Recommended Recruiting Actions  decide what to do about it
+ *
+ * Tab 3 is the decision surface: it generates four ranked recommendations,
+ * an opportunity map and the headline insights *before* anyone asks a
+ * question, and keeps the Copilot underneath as an explain-and-explore
+ * layer rather than the main event.
  *
  * Everything on all three tabs is derived from TALENT_POOL_CANDIDATES,
- * so a number shown on the dashboard, in a search result and inside a
- * Copilot answer is always the same number.
+ * so a number shown on the dashboard, in a search result, on a
+ * recommendation card and inside a Copilot answer is always the same
+ * number.
  * ================================================================== */
 (function () {
 "use strict";
@@ -274,12 +280,16 @@ const hiddenRanked = () => hiddenAll().slice().sort((a, b) => b.count - a.count)
 let activeTab = "dashboard";
 
 function showTab(tab) {
+  /* Only reset the scroll when the pane actually changes. Section C puts
+   * the Copilot at the bottom of a long page, so asking a question from a
+   * recommendation card must not yank the reader back to the masthead. */
+  const changed = activeTab !== tab;
   activeTab = tab;
   $$("#engPivot .pivot-tab").forEach(b => b.classList.toggle("active", b.dataset.tab === tab));
   $$(".eng-pane").forEach(p => p.classList.toggle("active", p.id === "eng-" + tab));
   $$('#nav .nav-item[data-view="engine"]').forEach(a =>
     a.classList.toggle("active", a.dataset.tab === tab));
-  window.scrollTo(0, 0);
+  if (changed) window.scrollTo(0, 0);
 }
 
 $$("#engPivot .pivot-tab").forEach(b =>
@@ -877,7 +887,392 @@ function candCard(x, r, hiddenMode) {
 }
 
 /* ============================================================
- * TAB 3 - TALENT INTELLIGENCE COPILOT
+ * TAB 3 - RECOMMENDED RECRUITING ACTIONS (Section C)
+ * ------------------------------------------------------------
+ * This is a decision surface, not a chat surface. The page answers
+ * four questions before the recruiter asks anything:
+ *
+ *   where should we hire        -> prioritised action 1 + the map
+ *   which schools to engage     -> prioritised action 2
+ *   where are the talent gaps   -> prioritised action 3 + the map
+ *   what do we do next          -> prioritised action 4 + card actions
+ *
+ * The Copilot sits underneath as an explain-and-explore layer. Every
+ * recommendation is recomputed from the same derived model the
+ * dashboard and search use, so nothing here can drift away from the
+ * rest of the product.
+ * ========================================================== */
+
+const pipeOf = code => (typeof MARKET_PIPELINE !== "undefined" && MARKET_PIPELINE[code]) || {};
+const sigOf  = code => (typeof MARKET_SIGNALS  !== "undefined" && MARKET_SIGNALS[code])  || {};
+const calOf  = code => (typeof MARKET_CALENDAR !== "undefined" && MARKET_CALENDAR[code]) || {};
+const intelOf = code => (typeof MARKET_INTEL   !== "undefined" && MARKET_INTEL[code])    || {};
+const ctryStat   = code => COUNTRY_STATS.find(c => c.code === code);
+const schoolStat = abbr => SCHOOL_STATS.find(s => s.abbr === abbr);
+
+/* Regional reference lines every recommendation is measured against. */
+const ASEAN_COVERAGE  = SCHOOL_STATS.filter(s => s.covered).length / SCHOOL_STATS.length;
+const ASEAN_WARM_RATE = CAND.filter(isWarm).length / CAND.length;
+const GROWING_MARKETS = CC_ORDER.filter(c => (pipeOf(c).growth || 0) >= 5);
+
+const QUARTER_LABEL = ["Q1 Jan–Mar", "Q2 Apr–Jun", "Q3 Jul–Sep", "Q4 Oct–Dec"];
+function quartersOf(code) {
+  const q = [0, 0, 0, 0];
+  CAND.filter(c => c.country === code).forEach(c => q[Math.floor(c.gradMonth / 3)]++);
+  return q;
+}
+const maxIndex = arr => arr.reduce((best, v, i) => (v > arr[best] ? i : best), 0);
+const rankOf = (code, pick) => CC_ORDER.slice().sort((a, b) => pick(b) - pick(a)).indexOf(code) + 1;
+const ordinal = n => n + (n === 1 ? "st" : n === 2 ? "nd" : n === 3 ? "rd" : "th");
+
+/* ---------- a horizontal bar chart small enough to live in a card ---------- */
+function miniChart(o) {
+  const max = Math.max.apply(null, o.rows.map(r => r.v)) || 1;
+  return `<figure class="mc">
+    <figcaption class="mc-h">${esc(o.title)}</figcaption>
+    <div class="mc-rows">${o.rows.map(r => `
+      <div class="mc-row${r.on ? " on" : ""}${r.ref ? " ref" : ""}">
+        <span class="mc-l">${r.label}</span>
+        <span class="mc-t"><i style="width:${Math.max(2, Math.round(r.v / max * 100))}%"></i></span>
+        <span class="mc-v">${r.text}</span>
+      </div>`).join("")}</div>
+    ${o.foot ? `<p class="mc-f">${o.foot}</p>` : ""}
+  </figure>`;
+}
+
+/* ============================================================
+ * 1 - PRIORITISED ACTIONS
+ * ------------------------------------------------------------
+ * Four recommendations, each one a claim plus the evidence for it.
+ * Built fresh so the copy can never quote a number the model no
+ * longer produces.
+ * ========================================================== */
+function buildActions() {
+  const out = [];
+
+  /* ---------- 1 · where to hire ---------- */
+  const vn = ctryStat("VN"), vnPipe = pipeOf("VN"), vnSig = sigOf("VN");
+  out.push({
+    accent: "#0f6cbd", icon: cc("VN").flag,
+    kicker: "Where should we hire",
+    title: "Prioritize Vietnam for FY28 Intern Hiring",
+    reason: `Vietnam shows the strongest combination of talent supply, target-school concentration
+      and cost competitiveness. It is ${ordinal(rankOf("VN", c => pipeOf(c).reachable || 0))} in ASEAN on
+      addressable pipeline but ${ordinal(rankOf("VN", c => pipeOf(c).growth || 0))} on growth, and it is the only
+      market that pairs a <b>${esc(vnSig.supply || "High")}</b> supply band with a
+      <b>${esc(vnSig.cost || "Low")}</b> cost band.`,
+    metrics: [
+      { v: "+" + (vnPipe.growth || 0) + "%", k: "YoY pipeline growth · fastest in ASEAN" },
+      { v: (vnPipe.reachable || 0).toLocaleString(), k: "Addressable final-year students" },
+      { v: vn.covered + "/" + vn.schools, k: "Target schools covered (" + pct(vn.coverage) + "%)" },
+      { v: vn.hi.toLocaleString(), k: "High-potential candidates already in pool" }
+    ],
+    chart: miniChart({
+      title: "ASEAN talent pool size comparison",
+      rows: CC_ORDER.map(code => ({
+        v: pipeOf(code).reachable || 0,
+        on: code === "VN",
+        label: cc(code).flag + " " + esc(cc(code).name),
+        text: (pipeOf(code).reachable || 0).toLocaleString() +
+          ` <em>+${pipeOf(code).growth || 0}%</em>`
+      })).sort((a, b) => b.v - a.v),
+      foot: `Addressable final-year students in range of the target-school list, with year-on-year
+        movement. ${esc(vnPipe.strength || "")}`
+    }),
+    tags: ["High Talent Supply", "Growing Talent Pools", "Cost Competitive"],
+    acts: [
+      askChip("Why is Vietnam recommended?"),
+      searchChip("Search Vietnam talent", { tab: "search", country: "VN" }),
+      { text: "Open the Vietnam profile", run: () => openCountry("VN") }
+    ]
+  });
+
+  /* ---------- 2 · which schools to engage ---------- */
+  const picks = ["HCMUT", "ITB"].map(schoolStat).filter(Boolean);
+  const pickHi = picks.reduce((n, s) => n + s.hi, 0);
+  const pickTotal = picks.reduce((n, s) => n + s.total, 0);
+  out.push({
+    accent: "#8b5cf6", icon: "🎓",
+    kicker: "Which schools should we engage",
+    title: "Expand Coverage to " + picks.map(s => s.abbr).join(" and "),
+    reason: `These universities contain a large concentration of target talent that is currently
+      underrepresented in recruiting pipelines. Both are Tier 1 and together hold
+      <b>${pickHi} high-potential candidates</b>, yet
+      ${picks.map(s => esc(s.abbr) + " sits at " + pct(s.warmRate) + "% warm").join(" and ")} —
+      against an ASEAN average of ${pct(ASEAN_WARM_RATE)}%.`,
+    metrics: picks.map(s => ({
+      v: s.total + " <em>/ " + s.hi + " HiPo</em>",
+      k: s.abbr + " · Tier " + s.tier + " · " + cc(s.country).name
+    })).concat([
+      { v: pickTotal.toLocaleString(), k: "Candidates already held across both schools" },
+      { v: picks.filter(s => !s.covered).length + "/" + picks.length,
+        k: "Still short of the coverage threshold" }
+    ]),
+    chart: miniChart({
+      title: "Coverage versus ASEAN average",
+      rows: picks.map(s => ({
+        v: s.warmRate, on: true,
+        label: esc(s.abbr) + " <em>" + cc(s.country).flag + "</em>",
+        text: pct(s.warmRate) + "% warm"
+      })).concat([{
+        v: ASEAN_WARM_RATE, ref: true,
+        label: "ASEAN average", text: pct(ASEAN_WARM_RATE) + "% warm"
+      }]),
+      foot: `A school is only <i>covered</i> at ${ENGINE_COVERAGE.minCandidates}+ in pool and
+        ${ENGINE_COVERAGE.minWarm}+ warm. ` +
+        picks.map(s => s.covered
+          ? esc(s.abbr) + " has just cleared it with zero headroom"
+          : esc(s.abbr) + " is " + (s.volGap || s.warmGap) + " short").join("; ") + "."
+    }),
+    tags: ["High Quality Talent", "Under-covered", "Strategic Fit"],
+    acts: picks.map(s => searchChip("Open " + s.abbr + " in search", { tab: "search", uni: s.abbr }))
+      .concat([askChip("Which schools similar to HCMUT should I prioritize?")])
+  });
+
+  /* ---------- 3 · where the gaps are ---------- */
+  const th = ctryStat("TH");
+  out.push({
+    accent: "#e0a33c", icon: cc("TH").flag,
+    kicker: "Where are our talent gaps",
+    title: "Talent Pool Coverage in Thailand is Below ASEAN Average",
+    reason: `Current talent pool penetration is below regional benchmarks — ${th.covered} of
+      ${th.schools} target schools have a working pipeline (${pct(th.coverage)}%) against an ASEAN
+      average of ${pct(ASEAN_COVERAGE)}%. Recommend increased sourcing and university partnership
+      activity rather than new target schools.`,
+    metrics: [
+      { v: pct(th.coverage) + "%", k: "School coverage · ASEAN average " + pct(ASEAN_COVERAGE) + "%" },
+      { v: th.poolCount.toLocaleString(), k: "Candidates in pool · smallest in ASEAN" },
+      { v: (pipeOf("TH").reachable || 0).toLocaleString(), k: "Addressable students going unworked" },
+      { v: pct(th.ratio) + "%", k: "Pipeline against a " + Math.round(th.target) + "-person target" }
+    ],
+    chart: miniChart({
+      title: "Coverage % vs ASEAN average",
+      rows: CC_ORDER.map(code => {
+        const c = ctryStat(code);
+        return {
+          v: c.coverage, on: code === "TH",
+          label: cc(code).flag + " " + esc(cc(code).name),
+          text: pct(c.coverage) + "% <em>" + c.covered + "/" + c.schools + "</em>"
+        };
+      }).sort((a, b) => b.v - a.v)
+        .concat([{ v: ASEAN_COVERAGE, ref: true, label: "ASEAN average",
+                   text: pct(ASEAN_COVERAGE) + "%" }]),
+      foot: `Thailand's reach is not the problem — ${(pipeOf("TH").reachable || 0).toLocaleString()}
+        students are addressable. The constraint is depth per school.`
+    }),
+    tags: ["Coverage Gap", "High Potential Market", "Take Action"],
+    acts: [
+      searchChip("Search Thailand talent", { tab: "search", country: "TH" }),
+      askChip("Which ASEAN schools are underrepresented?"),
+      { text: "Open the Thailand profile", run: () => openCountry("TH") }
+    ]
+  });
+
+  /* ---------- 4 · what to do next ---------- */
+  const myQ = quartersOf("MY"), peak = maxIndex(myQ);
+  const myCal = calOf("MY");
+  const training = (myCal.intern || []).slice().sort((a, b) => (b.to - b.from) - (a.to - a.from))[0];
+  const MONTHS = ["January", "February", "March", "April", "May", "June",
+                  "July", "August", "September", "October", "November", "December"];
+  const leadMonth = training ? MONTHS[Math.max(0, training.from - 2)] : "March";
+  out.push({
+    accent: "#31b57a", icon: cc("MY").flag,
+    kicker: "What should we do next",
+    title: "Malaysia Graduate Pipeline is Strongest in " + QUARTER_LABEL[peak].split(" ")[0],
+    reason: `Malaysia shows the largest graduating cohort concentration in
+      <b>${esc(QUARTER_LABEL[peak])}</b> — ${myQ[peak]} of ${ctryStat("MY").poolCount} candidates, following
+      a ${esc((myCal.grad || {}).label || "Aug – Oct")} graduation window.
+      ${training ? "Because " + esc(training.label.toLowerCase()) + " runs " +
+        MONTHS[training.from - 1] + "–" + MONTHS[training.to - 1] + ", offers have to land before it opens: " +
+        "recommend launching internship campaigns before " + leadMonth + "."
+        : "Recommend launching internship campaigns a full quarter ahead of the window."}`,
+    metrics: [
+      { v: QUARTER_LABEL[peak].split(" ")[0], k: "Peak graduation quarter · " + QUARTER_LABEL[peak].split(" ")[1] },
+      { v: myQ[peak] + " <em>/ " + ctryStat("MY").poolCount + "</em>", k: "Candidates graduating in the peak quarter" },
+      { v: esc((myCal.grad || {}).label || "Aug – Oct"), k: "Coursework-to-convocation window" },
+      { v: training ? MONTHS[training.from - 1].slice(0, 3) + " – " + MONTHS[training.to - 1].slice(0, 3) : "Jul – Sep",
+        k: training ? training.label : "Industrial training" }
+    ],
+    chart: miniChart({
+      title: "Quarterly graduate pipeline trend",
+      rows: myQ.map((v, i) => ({
+        v: v, on: i === peak,
+        label: esc(QUARTER_LABEL[i]),
+        text: v + " <em>" + pct(v / ctryStat("MY").poolCount) + "%</em>"
+      })),
+      foot: `Campaign timing is set by the window, not the ceremony — act roughly one quarter before
+        the bar you want to convert.`
+    }),
+    tags: ["Graduate Peak", "Strong Pipeline", "Time-sensitive"],
+    acts: [
+      searchChip("Search Malaysia talent", { tab: "search", country: "MY" }),
+      askChip("Generate a FY28 internship hiring plan."),
+      { text: "Open the Malaysia profile", run: () => openCountry("MY") }
+    ]
+  });
+
+  return out;
+}
+
+let RECOMMENDED = [];
+
+function renderActions() {
+  RECOMMENDED = buildActions();
+  $("#recAsOf").innerHTML = `Generated from ${CAND.length.toLocaleString()} candidate records
+    &middot; ${SCHOOL_STATS.length} target schools &middot; ${CC_ORDER.length} markets`;
+
+  $("#recActions").innerHTML = RECOMMENDED.map((a, i) => `
+    <article class="rec-card" style="--rc:${a.accent}">
+      <header class="rec-c-top">
+        <span class="rec-rank">${i + 1}</span>
+        <span class="rec-ico">${a.icon}</span>
+        <div>
+          <span class="rec-kicker">${esc(a.kicker)}</span>
+          <h3>${esc(a.title)}</h3>
+        </div>
+      </header>
+      <p class="rec-why">${a.reason}</p>
+      <div class="rec-metrics">${a.metrics.map(m =>
+        `<div class="rec-m"><span class="rec-m-v">${m.v}</span>
+          <span class="rec-m-k">${esc(m.k)}</span></div>`).join("")}</div>
+      ${a.chart}
+      <div class="rec-tags">${a.tags.map(t => `<span class="rec-tag">${esc(t)}</span>`).join("")}</div>
+      <footer class="rec-acts">${a.acts.map((x, j) =>
+        `<button class="btn sm ${j === 0 ? "primary" : "ghost"}" data-rec="${i}" data-act="${j}">
+          ${esc(x.text)}</button>`).join("")}</footer>
+    </article>`).join("");
+}
+
+$("#recActions").addEventListener("click", e => {
+  const b = e.target.closest("button[data-rec]");
+  if (!b) return;
+  const a = RECOMMENDED[Number(b.dataset.rec)];
+  if (a && a.acts[Number(b.dataset.act)]) a.acts[Number(b.dataset.act)].run();
+});
+
+function openCountry(code) {
+  const n = $(`#navCountries .nav-sub-item[data-country="${code}"]`);
+  if (n) return n.click();
+  const p = $('#nav .nav-item[data-view="country"]');
+  if (p) p.click();
+}
+
+/* ============================================================
+ * 2 - ASEAN TALENT OPPORTUNITY MAP
+ * ========================================================== */
+const MAP_TONE = {
+  hot:     { colour: "#0f6cbd", label: "High opportunity" },
+  gap:     { colour: "#e0a33c", label: "Coverage gap" },
+  grow:    { colour: "#31b57a", label: "Growing pipeline" },
+  time:    { colour: "#f06f5e", label: "Graduate timing" },
+  volume:  { colour: "#8b5cf6", label: "Large talent pool" },
+  premium: { colour: "#12a594", label: "Premium market" }
+};
+
+let mapPick = "VN";
+
+function renderMap() {
+  const shapes = ENGINE_MAP_SHAPES.map(p => `<polygon points="${p}"/>`).join("");
+
+  const pins = CC_ORDER.map(code => {
+    const o = ENGINE_OPPORTUNITY[code];
+    if (!o) return "";
+    const tone = MAP_TONE[o.tone] || MAP_TONE.hot;
+    return `<button class="mk mk-${esc(o.side)}" data-cc="${code}"
+      style="left:${o.x}%;top:${o.y}%;--mk:${tone.colour}"
+      aria-label="${esc(cc(code).name)} — ${esc(o.label)}">
+      <i class="mk-dot"></i>
+      <span class="mk-lab"><b>${cc(code).flag} ${esc(cc(code).name)}</b>${esc(o.label)}</span>
+    </button>`;
+  }).join("");
+
+  $("#recMap").innerHTML =
+    `<svg class="mk-geo" viewBox="0 0 100 76" preserveAspectRatio="xMidYMid meet"
+       role="img" aria-label="Stylised map of Southeast Asia">${shapes}</svg>${pins}`;
+
+  $("#recLegend").innerHTML = Object.keys(MAP_TONE).map(k =>
+    `<span class="lg"><i style="background:${MAP_TONE[k].colour}"></i>${esc(MAP_TONE[k].label)}</span>`
+  ).join("");
+
+  selectMarket(mapPick);
+}
+
+$("#recMap").addEventListener("click", e => {
+  const b = e.target.closest(".mk");
+  if (b) selectMarket(b.dataset.cc);
+});
+
+function selectMarket(code) {
+  mapPick = code;
+  $$("#recMap .mk").forEach(b => b.classList.toggle("on", b.dataset.cc === code));
+
+  const c = ctryStat(code), o = ENGINE_OPPORTUNITY[code] || {};
+  const tone = MAP_TONE[o.tone] || MAP_TONE.hot;
+  const sig = sigOf(code), pipe = pipeOf(code), cal = calOf(code), intel = intelOf(code);
+  const prof = (typeof MARKET_PROFILE !== "undefined" && MARKET_PROFILE[code]) || {};
+  const lvl = (v, good) => `<span class="lvl ${v === good ? "good" : v === "Medium" ? "mid" : "bad"}">${esc(v)}</span>`;
+
+  $("#recSide").innerHTML = `
+    <div class="rs-top" style="--rs:${tone.colour}">
+      <span class="rs-flag">${cc(code).flag}</span>
+      <div><h3>${esc(c.name)}</h3><span class="rs-sig">${esc(o.label || "")}</span></div>
+    </div>
+    ${prof.headline ? `<p class="rs-head">${esc(prof.headline)}</p>` : ""}
+    <div class="rs-bands">
+      ${sig.cost ? lvl(sig.cost, "Low") : ""}
+      ${sig.supply ? lvl(sig.supply, "High") : ""}
+      ${sig.competition ? lvl(sig.competition, "Low") : ""}
+    </div>
+    <dl class="rs-stats">
+      <div><dt>Addressable pipeline</dt><dd>${(pipe.reachable || 0).toLocaleString()}
+        <em>+${pipe.growth || 0}% YoY</em></dd></div>
+      <div><dt>Candidates in pool</dt><dd>${c.poolCount.toLocaleString()}
+        <em>${c.hi} high potential</em></dd></div>
+      <div><dt>School coverage</dt><dd>${pct(c.coverage)}%
+        <em>${c.covered}/${c.schools} schools</em></dd></div>
+      <div><dt>Graduation window</dt><dd>${esc((cal.grad || {}).label || "—")}
+        <em>peak ${QUARTER_LABEL[maxIndex(quartersOf(code))].split(" ")[0]}</em></dd></div>
+    </dl>
+    ${intel.channel ? `<p class="rs-note"><b>Best channel.</b> ${esc(intel.channel)}</p>` : ""}
+    <div class="rs-acts">
+      <button class="btn sm primary" data-rs="ask">Why this market?</button>
+      <button class="btn sm ghost" data-rs="search">Search talent</button>
+      <button class="btn sm ghost" data-rs="profile">Open profile</button>
+    </div>`;
+}
+
+$("#recSide").addEventListener("click", e => {
+  const b = e.target.closest("button[data-rs]");
+  if (!b) return;
+  const name = cc(mapPick).name;
+  if (b.dataset.rs === "ask")     return ask("Why is " + name + " recommended?", "why");
+  if (b.dataset.rs === "search")  return runAction({ tab: "search", country: mapPick });
+  if (b.dataset.rs === "profile") return openCountry(mapPick);
+});
+
+/* ============================================================
+ * 3 - KEY INSIGHTS
+ * ========================================================== */
+function renderInsights() {
+  const reach = CC_ORDER.reduce((n, c) => n + (pipeOf(c).reachable || 0), 0);
+  $("#recKpis").innerHTML = [
+    kpiCard({ icon: "&#128101;", k: "Total ASEAN Talent Pool", v: CAND.length.toLocaleString(),
+      sub: `Across ${TALENT_POOLS.length} managed pools &middot; ${reach.toLocaleString()} students addressable`,
+      colour: "#0f6cbd" }),
+    kpiCard({ icon: "&#127891;", k: "Target Schools Tracked", v: SCHOOL_STATS.length,
+      sub: `${SCHOOL_STATS.filter(s => s.tier === 1).length} Tier 1 &middot; across ${CC_ORDER.length} ASEAN markets`,
+      colour: "#8b5cf6" }),
+    kpiCard({ icon: "&#9678;", k: "Average School Coverage", v: pct(ASEAN_COVERAGE), unit: "%",
+      sub: `${SCHOOL_STATS.filter(s => s.covered).length} of ${SCHOOL_STATS.length} schools hold a working pipeline`,
+      colour: "#e0a33c", bar: ASEAN_COVERAGE }),
+    kpiCard({ icon: "&#128200;", k: "Markets with Growing Pipelines", v: GROWING_MARKETS.length,
+      sub: `${GROWING_MARKETS.map(c => cc(c).flag + " " + cc(c).name).join(", ")} &middot; +5% YoY or better`,
+      colour: "#31b57a", bar: GROWING_MARKETS.length / CC_ORDER.length })
+  ].join("");
+}
+
+/* ============================================================
+ * 4 - COPILOT, AS A SECONDARY EXPLAIN LAYER
  * ========================================================== */
 function initCopilot() {
   $("#engPrompts").innerHTML = "";
@@ -901,10 +1296,10 @@ function initCopilot() {
 function greet() {
   $("#engThread").innerHTML = "";
   bot(`<div class="cop-hi">
-      <h3>Talent Intelligence Copilot</h3>
-      <p>I read the same ${CAND.length.toLocaleString()} candidate records the dashboard and search
-        use. Ask me about coverage, pipeline health, hidden talent, cohorts or who to engage &mdash;
-        I answer with the numbers behind them, not opinions.</p>
+      <h3>I explain the recommendations above</h3>
+      <p>The four actions are already generated from the same
+        ${CAND.length.toLocaleString()} candidate records the dashboard and search use. Ask me to
+        justify one, compare two markets, widen a school shortlist or turn any of it into a plan.</p>
     </div>`);
 }
 
@@ -1303,14 +1698,309 @@ const ANSWERS = {
     };
   },
 
+  /* ---------- why a market carries a recommendation ---------- */
+  why: function (text) {
+    const t = String(text || "").toLowerCase();
+    const hit = COUNTRY_STATS.find(c => t.indexOf(c.name.toLowerCase()) >= 0) || ctryStat("VN");
+    const pipe = pipeOf(hit.code), sig = sigOf(hit.code), prof =
+      (typeof MARKET_PROFILE !== "undefined" && MARKET_PROFILE[hit.code]) || {};
+
+    const reachRank  = rankOf(hit.code, c => pipeOf(c).reachable || 0);
+    const growthRank = rankOf(hit.code, c => pipeOf(c).growth || 0);
+    const covRank    = rankOf(hit.code, c => ctryStat(c).coverage);
+    const hiRank     = rankOf(hit.code, c => ctryStat(c).hi);
+
+    const line = (signal, value, rank, verdict) =>
+      [`<b>${esc(signal)}</b>`, value,
+       `<span class="sub-txt">${ordinal(rank)} of ${CC_ORDER.length}</span>`, verdict];
+
+    const rows = [
+      line("Addressable pipeline", (pipe.reachable || 0).toLocaleString() + " students", reachRank,
+        reachRank <= 3 ? "Supports" : "Neutral"),
+      line("Pipeline growth", "+" + (pipe.growth || 0) + "% YoY", growthRank,
+        growthRank <= 2 ? "Supports" : "Neutral"),
+      line("Cost band", esc(sig.cost || "—"), rankOf(hit.code, c => ({ Low: 3, Medium: 2, High: 1 })[sigOf(c).cost] || 0),
+        sig.cost === "Low" ? "Supports" : sig.cost === "High" ? "Counts against" : "Neutral"),
+      line("Talent supply", esc(sig.supply || "—"), rankOf(hit.code, c => ({ High: 3, Medium: 2, Low: 1 })[sigOf(c).supply] || 0),
+        sig.supply === "High" ? "Supports" : "Neutral"),
+      line("High potential in pool", hit.hi + " of " + hit.poolCount, hiRank,
+        hiRank <= 3 ? "Supports" : "Neutral"),
+      line("Target-school coverage", pct(hit.coverage) + "% (" + hit.covered + "/" + hit.schools + ")", covRank,
+        hit.coverage >= ASEAN_COVERAGE ? "Supports" : "Counts against")
+    ];
+
+    const supports = rows.filter(r => r[3] === "Supports").length;
+    const against = rows.filter(r => r[3] === "Counts against").length;
+
+    return {
+      html: `<h3>Why ${hit.flag} ${esc(hit.name)} carries this recommendation</h3>
+        <p>${supports} of the ${rows.length} signals I weigh support it${against
+          ? " and " + against + " count against it" : ""}. Here is the whole picture, not just the
+          part that agrees with the headline.</p>
+        ${miniTable(["Signal", "This market", "ASEAN rank", "Reads as"],
+          rows.map(r => [r[0], r[1], r[2],
+            `<span class="tag-st" style="background:${
+              r[3] === "Supports" ? "#31b57a" : r[3] === "Counts against" ? "#ef4444" : "#8b96a8"}1f;color:${
+              r[3] === "Supports" ? "#31b57a" : r[3] === "Counts against" ? "#ef4444" : "#8b96a8"}">${r[3]}</span>`]))}
+        ${prof.positioning ? `<p><b>Positioning.</b> ${esc(prof.positioning)}</p>` : ""}
+        <p class="cop-take"><b>What would change my mind:</b> if
+          ${esc(hit.name)} coverage stays at ${pct(hit.coverage)}% while the pipeline keeps growing,
+          the recommendation stops being "hire here" and becomes "you are losing a market you already
+          reached". Reach is not the constraint — depth per school is.</p>`,
+      chips: [
+        searchChip("Search " + hit.name, { tab: "search", country: hit.code }),
+        askChip("Compare " + hit.name + " and " +
+          (COUNTRY_STATS.filter(c => c.code !== hit.code)
+            .sort((a, b) => (pipeOf(b.code).reachable || 0) - (pipeOf(a.code).reachable || 0))[0].name) + "."),
+        askChip("Create a campus engagement strategy.")
+      ]
+    };
+  },
+
+  /* ---------- widen a school shortlist ---------- */
+  similar: function (text) {
+    const t = String(text || "").toUpperCase();
+    const base = SCHOOLS.find(s => new RegExp("\\b" + s.abbr.toUpperCase().replace(/[^A-Z0-9]/g, ".") + "\\b").test(t))
+      || SCHOOLS.find(s => t.indexOf(s.name.toUpperCase()) >= 0)
+      || SCHOOLS.find(s => s.abbr === "HCMUT");
+    const baseStat = schoolStat(base.abbr);
+
+    const scored = SCHOOLS.filter(s => s.abbr !== base.abbr).map(s => {
+      const st = schoolStat(s.abbr);
+      const shared = s.strengths.filter(x => base.strengths.indexOf(x) >= 0);
+      /* Similarity first, then how much of it is still unworked - a
+       * lookalike you already cover is not an opportunity. */
+      const fit = shared.length * 3 + (s.tier === base.tier ? 2 : 0)
+        + (s.country === base.country ? 1 : 0);
+      return { s: s, st: st, shared: shared, fit: fit, head: st.hi + (st.covered ? 0 : 6) };
+    }).filter(x => x.shared.length)
+      .sort((a, b) => b.fit - a.fit || b.head - a.head)
+      .slice(0, 6);
+
+    const top = scored[0];
+    return {
+      html: `<h3>Schools that look like ${esc(base.abbr)}</h3>
+        <p>${esc(base.name)} is a Tier ${base.tier} ${cc(base.country).flag} school strong in
+          ${base.strengths.slice(0, 3).map(esc).join(", ")}, holding ${baseStat.total} candidates and
+          ${baseStat.hi} high potentials. I match on shared academic strengths, then rank by how much
+          of that lookalike talent you are <i>not</i> already working.</p>
+        ${miniTable(["School", "Market", "Tier", "Shared strengths",
+                     { t: "In pool", n: 1 }, { t: "HiPo", n: 1 }, "Status"],
+          scored.map(x => [
+            `<b>${esc(x.s.abbr)}</b><div class="sub-txt">${esc(x.s.name)}</div>`,
+            cc(x.s.country).flag + " " + esc(cc(x.s.country).name),
+            "T" + x.s.tier,
+            x.shared.map(esc).join(", "),
+            x.st.total, x.st.hi,
+            `<span class="tag-st" style="background:${x.st.covered ? "#31b57a" : "#e0a33c"}1f;color:${
+              x.st.covered ? "#31b57a" : "#e0a33c"}">${x.st.covered ? "Covered" : "Open"}</span>`
+          ]))}
+        <p class="cop-take"><b>Take:</b> prioritise ${esc(top.s.abbr)} — it shares
+          ${top.shared.length} strength${top.shared.length > 1 ? "s" : ""} with ${esc(base.abbr)},
+          holds ${top.st.hi} high potentials and is
+          ${top.st.covered ? "covered but thin" : "still " + (top.st.volGap || top.st.warmGap) + " short of coverage"}.</p>`,
+      chips: scored.slice(0, 2).map(x =>
+        searchChip("Open " + x.s.abbr + " in search", { tab: "search", uni: x.s.abbr }))
+        .concat([askChip("Create a campus engagement strategy.")])
+    };
+  },
+
+  /* ---------- a sequenced campus engagement strategy ---------- */
+  strategy: function () {
+    const ranked = COUNTRY_STATS.slice().sort((a, b) =>
+      (pipeOf(b.code).growth || 0) - (pipeOf(a.code).growth || 0));
+
+    const band = c => c.coverage >= 0.75 ? { k: "Defend", colour: "#31b57a" }
+      : c.coverage >= ASEAN_COVERAGE ? { k: "Deepen", colour: "#0f6cbd" }
+      : { k: "Open", colour: "#e0a33c" };
+
+    const rows = ranked.map(c => {
+      const b = band(c), cal = calOf(c.code), intel = intelOf(c.code);
+      return [
+        c.flag + " <b>" + esc(c.name) + "</b>",
+        `<span class="tag-st" style="background:${b.colour}1f;color:${b.colour}">${b.k}</span>`,
+        pct(c.coverage) + "%",
+        "+" + (pipeOf(c.code).growth || 0) + "%",
+        esc(((cal.intern || [])[0] || {}).label || "—"),
+        `<span class="sub-txt">${esc(intel.channel || "")}</span>`
+      ];
+    });
+
+    const open = ranked.filter(c => band(c).k === "Open");
+    const defend = ranked.filter(c => band(c).k === "Defend");
+
+    return {
+      html: `<h3>Campus engagement strategy</h3>
+        <p>Three plays, assigned by coverage rather than by preference. A market you already cover
+          does not need a new channel — it needs protecting. A market you do not cover does not need
+          a bigger budget — it needs a first relationship.</p>
+        ${miniTable(["Market", "Play", "Coverage", "Growth", "Entry window", "Channel that works"], rows)}
+        <ol class="cop-plan">
+          <li><span class="cop-pri">1</span><div><b>Open ${open.map(c => esc(c.name)).join(", ") || "nothing — you are covered"}</b>
+            <div class="sub-txt">Coverage below the ${pct(ASEAN_COVERAGE)}% ASEAN average. Start with one
+              faculty relationship per school, not a campus-wide campaign. Cost here is outreach time.</div></div></li>
+          <li><span class="cop-pri">2</span><div><b>Deepen the schools you have already reached</b>
+            <div class="sub-txt">${SCHOOL_STATS.filter(s => s.total >= ENGINE_COVERAGE.minCandidates && !s.covered).length}
+              schools hold ${ENGINE_COVERAGE.minCandidates}+ candidates but are not warm enough to count as
+              covered. That is a follow-up problem, and it is the cheapest pipeline you own.</div></div></li>
+          <li><span class="cop-pri">3</span><div><b>Defend ${defend.map(c => esc(c.name)).join(", ") || "your strongest markets"}</b>
+            <div class="sub-txt">Everyone recruits these campuses on the same calendar, so speed of
+              engagement decides conversion. Protect intern headcount for conversion instead of
+              competing at fairs.</div></div></li>
+        </ol>
+        <p class="cop-take"><b>Sequence it by calendar, not by priority.</b> Entry windows open at
+          different times across ASEAN — running all six markets on one timeline is how campaigns miss
+          every one of them.</p>`,
+      chips: [
+        askChip("Generate a FY28 internship hiring plan."),
+        askChip("Which ASEAN schools are underrepresented?"),
+        open[0] ? searchChip("Search " + open[0].name, { tab: "search", country: open[0].code })
+                : askChip("Who should I engage next?")
+      ]
+    };
+  },
+
+  /* ---------- two markets, side by side ---------- */
+  compare: function (text) {
+    const t = String(text || "").toLowerCase();
+    const named = COUNTRY_STATS.filter(c => t.indexOf(c.name.toLowerCase()) >= 0);
+    const a = named[0] || ctryStat("VN");
+    const b = named.find(x => x.code !== a.code) || ctryStat(a.code === "ID" ? "VN" : "ID");
+
+    const num = (x, pick) => pick(x);
+    const metrics = [
+      { k: "Addressable pipeline", get: c => pipeOf(c.code).reachable || 0,
+        fmt: v => v.toLocaleString(), hi: true },
+      { k: "Pipeline growth YoY", get: c => pipeOf(c.code).growth || 0, fmt: v => "+" + v + "%", hi: true },
+      { k: "Candidates in pool", get: c => c.poolCount, fmt: v => v.toLocaleString(), hi: true },
+      { k: "High potential", get: c => c.hi, fmt: v => String(v), hi: true },
+      { k: "Target-school coverage", get: c => c.coverage, fmt: v => pct(v) + "%", hi: true },
+      { k: "Pipeline vs demand", get: c => c.ratio, fmt: v => pct(v) + "%", hi: true },
+      { k: "Cost band", get: c => ({ Low: 3, Medium: 2, High: 1 })[sigOf(c.code).cost] || 0,
+        fmt: (v, c) => esc(sigOf(c.code).cost || "—"), hi: true },
+      { k: "Competition", get: c => ({ Low: 3, Medium: 2, High: 1 })[sigOf(c.code).competition] || 0,
+        fmt: (v, c) => esc(sigOf(c.code).competition || "—"), hi: true }
+    ];
+
+    let aWin = 0, bWin = 0;
+    const rows = metrics.map(m => {
+      const av = num(a, m.get), bv = num(b, m.get);
+      const winner = av === bv ? null : (av > bv ? a : b);
+      if (winner === a) aWin++; if (winner === b) bWin++;
+      const mark = (c, v) => `${winner === c ? "<b>" : ""}${m.fmt(v, c)}${winner === c ? "</b>" : ""}`;
+      return ["<b>" + esc(m.k) + "</b>", mark(a, av), mark(b, bv),
+        winner ? winner.flag + " " + esc(winner.name) : "Tied"];
+    });
+
+    const lead = aWin === bWin ? null : (aWin > bWin ? a : b);
+    const other = lead === a ? b : a;
+
+    return {
+      html: `<h3>${a.flag} ${esc(a.name)} vs ${b.flag} ${esc(b.name)}</h3>
+        <p>Eight signals, scored head to head. Bold is the stronger number on that row.</p>
+        ${miniTable(["Signal", a.flag + " " + esc(a.name), b.flag + " " + esc(b.name), "Edge"], rows)}
+        <p class="cop-take"><b>Take:</b> ${lead
+          ? `${esc(lead.name)} leads ${Math.max(aWin, bWin)}&ndash;${Math.min(aWin, bWin)}. But
+             ${esc(other.name)} still wins on
+             ${rows.filter(r => r[3].indexOf(other.name) >= 0).length} signal(s), so treat it as a
+             second-wave market rather than a market to drop — ${(pipeOf(other.code).reachable || 0).toLocaleString()}
+             addressable students do not disappear because the headline went elsewhere.`
+          : `they split the signals evenly. Decide on cost and calendar, not on volume.`}</p>`,
+      chips: [
+        askChip("Why is " + a.name + " recommended?"),
+        searchChip("Search " + a.name, { tab: "search", country: a.code }),
+        searchChip("Search " + b.name, { tab: "search", country: b.code })
+      ]
+    };
+  },
+
+  /* ---------- a dated internship hiring plan ---------- */
+  plan: function (text) {
+    const fy = (String(text || "").match(/fy\s?(\d{2,4})/i) || [])[1] || "28";
+    const label = "FY" + String(fy).slice(-2);
+
+    const demand = COUNTRY_STATS.reduce((n, c) => n + c.demand, 0);
+    const target = COUNTRY_STATS.reduce((n, c) => n + c.target, 0);
+    const inScope = COUNTRY_STATS.reduce((n, c) => n + c.inScope, 0);
+
+    /* Sequence the markets by when their first internship window opens -
+     * a plan that ignores the ASEAN calendar misses every window in it. */
+    const seq = CC_ORDER.map(code => {
+      const w = (calOf(code).intern || []).slice().sort((x, y) => x.from - y.from)[0] || { from: 6, to: 8, label: "—" };
+      const c = ctryStat(code);
+      return { code: code, c: c, w: w, gap: Math.max(0, Math.round(c.target - c.inScope)) };
+    }).sort((x, y) => x.w.from - y.w.from);
+
+    const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const rows = seq.map(s => [
+      s.c.flag + " <b>" + esc(s.c.name) + "</b>",
+      "Q" + Math.ceil(s.w.from / 3),
+      MON[s.w.from - 1] + " – " + MON[s.w.to - 1] + `<div class="sub-txt">${esc(s.w.label)}</div>`,
+      s.c.demand, Math.round(s.c.target), s.c.inScope,
+      s.gap ? `<span class="tag-st" style="background:#ef44441f;color:#ef4444">${s.gap} short</span>`
+            : `<span class="tag-st" style="background:#31b57a1f;color:#31b57a">Covered</span>`
+    ]);
+
+    const profRows = PROF_STATS.slice().sort((x, y) => x.ratio - y.ratio).map(p => {
+      const st = statusOf(p.ratio);
+      return ["<b>" + esc(p.label) + "</b>", p.demand, Math.round(p.target), p.total,
+        `<span class="tag-st" style="background:${st.colour}1f;color:${st.colour}">${pct(p.ratio)}%</span>`,
+        hiddenStat(p.id).count + " elsewhere"];
+    });
+
+    const short = seq.filter(s => s.gap > 0);
+    const first = seq[0];
+
+    return {
+      html: `<h3>${esc(label)} internship hiring plan</h3>
+        <p>${demand} planned hires across ${CC_ORDER.length} markets needs
+          ${Math.round(target)} qualified people in pool at the ${ENGINE_PIPELINE_RATIO}:1 campus ratio.
+          You hold ${inScope.toLocaleString()} in scope today — ${pct(inScope / target)}% of target.</p>
+
+        <p><b>Step 1 — sequence by window, not by priority.</b> ${esc(first.c.name)} opens first
+          (${MON[first.w.from - 1]}), so its offers have to be out roughly a quarter earlier.</p>
+        ${miniTable(["Market", "Opens", "Internship window", { t: "Hires", n: 1 },
+                     { t: "Pipeline target", n: 1 }, { t: "In scope", n: 1 }, "Gap"], rows)}
+
+        <p><b>Step 2 — close the profession gaps before sourcing new schools.</b> Hidden talent already
+          sitting in the wrong pool is cheaper than any new channel.</p>
+        ${miniTable(["Profession", { t: "Hires", n: 1 }, { t: "Target", n: 1 },
+                     { t: "In pool", n: 1 }, "vs target", "Hidden"], profRows)}
+
+        <ol class="cop-plan">
+          <li><span class="cop-pri">Q1</span><div><b>Lock partnerships in the markets that open first</b>
+            <div class="sub-txt">${seq.slice(0, 2).map(s => esc(s.c.name)).join(" and ")} — faculty contact
+              and req sign-off before the window, not during it.</div></div></li>
+          <li><span class="cop-pri">Q2</span><div><b>Convert hidden talent into the short professions</b>
+            <div class="sub-txt">${hiddenRanked()[0].count} ${esc(hiddenRanked()[0].label.toLowerCase())}
+              matches already sit outside their home pool.</div></div></li>
+          <li><span class="cop-pri">Q3</span><div><b>Run the peak-cohort campaigns</b>
+            <div class="sub-txt">Target the markets whose graduating cohort lands next quarter, so the
+              offer arrives before the cohort does.</div></div></li>
+          <li><span class="cop-pri">Q4</span><div><b>Close the ${short.length} market${short.length === 1 ? "" : "s"} still short</b>
+            <div class="sub-txt">${short.length
+              ? short.map(s => esc(s.c.name) + " (" + s.gap + ")").join(", ")
+              : "Nothing is short — redirect the quarter into conversion."}</div></div></li>
+        </ol>
+        <p class="cop-take"><b>Take:</b> the plan is constrained by calendar and by depth, not by reach.
+          Every market here is already addressable.</p>`,
+      chips: [
+        askChip("Create a campus engagement strategy."),
+        askChip("What recruiting actions should I prioritize this month?"),
+        short[0] ? searchChip("Search " + short[0].c.name, { tab: "search", country: short[0].code })
+                 : askChip("Who should I engage next?")
+      ]
+    };
+  },
+
   fallback: function () {
     const worstCov = COUNTRY_STATS.slice().sort((a, b) => a.coverage - b.coverage)[0];
     const topHidden = hiddenRanked()[0];
     return {
-      html: `<h3>I answer talent-intelligence questions</h3>
-        <p>I only read the ${CAND.length.toLocaleString()} candidate records in your talent pools,
-          so I can cover coverage, pipeline health, hidden talent, cohorts and engagement priorities.
-          Right now the two things worth your attention are
+      html: `<h3>I explain and extend the recommendations</h3>
+        <p>I only read the ${CAND.length.toLocaleString()} candidate records in your talent pools, so I
+          can justify any recommendation above, compare markets, widen a school shortlist, or turn the
+          lot into a plan. Right now the two things worth your attention are
           <b>${esc(worstCov.name)} school coverage at ${pct(worstCov.coverage)}%</b> and
           <b>${topHidden.count} hidden ${esc(topHidden.label.toLowerCase())} matches</b>
           sitting in other pools.</p>
@@ -1352,7 +2042,23 @@ $("#engExport").addEventListener("click", () => {
       pct(p.ratio), hiddenStat(p.id).count]));
     return csv(rows, "talent-discovery-dashboard.csv");
   }
-  toast("Switch to the Dashboard or Search tab to export");
+  if (activeTab === "copilot") {
+    const strip = s => String(s).replace(/<[^>]*>/g, "").replace(/\s+/g, " ").trim();
+    const rows = [["Rank", "Decision", "Recommendation", "Rationale", "Tags", "Supporting metrics"]];
+    RECOMMENDED.forEach((a, i) => rows.push([i + 1, a.kicker, a.title, strip(a.reason),
+      a.tags.join("; "), a.metrics.map(m => strip(m.k) + ": " + strip(m.v)).join(" | ")]));
+    rows.push([]);
+    rows.push(["Market", "Opportunity signal", "Candidates in pool", "High potential",
+               "School coverage %", "Addressable pipeline", "Growth % YoY", "Peak graduation quarter"]);
+    CC_ORDER.forEach(code => {
+      const c = ctryStat(code);
+      rows.push([c.name, (ENGINE_OPPORTUNITY[code] || {}).label || "", c.poolCount, c.hi,
+        pct(c.coverage), pipeOf(code).reachable || 0, pipeOf(code).growth || 0,
+        QUARTER_LABEL[maxIndex(quartersOf(code))].split(" ")[0]]);
+    });
+    return csv(rows, "recommended-recruiting-actions.csv");
+  }
+  toast("Switch to a tab with exportable data");
 });
 
 /* ============================================================
@@ -1360,6 +2066,9 @@ $("#engExport").addEventListener("click", () => {
  * ========================================================== */
 renderDashboard();
 initSearch();
+renderActions();
+renderMap();
+renderInsights();
 initCopilot();
 
 })();

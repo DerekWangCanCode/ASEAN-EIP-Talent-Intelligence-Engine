@@ -1,4 +1,4 @@
-/* Talent Strategy Hub for ASEAN EIP — data layer
+/* ASEAN EIP Talent Intelligence Engine — data layer
  * All figures are indicative planning benchmarks compiled for campus-hiring
  * strategy. Validate against live sources before contractual use.
  */

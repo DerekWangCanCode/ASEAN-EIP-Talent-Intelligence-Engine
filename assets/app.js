@@ -1,11 +1,11 @@
-/* Talent Strategy Hub for ASEAN EIP — application shell
+/* ASEAN EIP Talent Intelligence Engine — application shell
  * ------------------------------------------------------------------
  * Owns the shared helpers, the sidebar router, the recruiter-journey
  * ribbon and the export dispatcher. The two content sections mount
  * themselves on top of this:
  *
- *   assets/market.js  Section A - Market Intelligence
- *   assets/engine.js  Section B - Talent Discovery
+ *   assets/market.js  Section A - Know the Market
+ *   assets/engine.js  Section B - Discover Talent / Section C - Take Action
  */
 (function () {
 "use strict";

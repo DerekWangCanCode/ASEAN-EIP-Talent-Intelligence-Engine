@@ -1,8 +1,10 @@
-# Talent Strategy Hub for ASEAN EIP
+# ASEAN EIP Talent Intelligence Engine
 
 **Know the Market → Discover Talent → Take Action**
 
-A zero-dependency static web app for early-career recruiting across **Singapore, Malaysia, Vietnam, the Philippines, Thailand and Indonesia**.
+An ASEAN recruiting decision intelligence platform that turns talent signals into recruiting actions. A zero-dependency static web app for early-career recruiting across **Singapore, Malaysia, Vietnam, the Philippines, Thailand and Indonesia**.
+
+It is not a dashboard, not a search engine and not a chatbot — the recommendations are generated before anyone asks a question, and the assistant sits underneath them as an explain-and-explore layer.
 
 Open `index.html` in any browser — no build step, no server, no CDN, no package manager.
 
@@ -14,9 +16,9 @@ The whole application is organised around three steps, surfaced as a persistent 
 |---|---|---|
 | **1 · Know the Market** | *Where should we hire?* | Section A — ASEAN Overview, Country Profiles |
 | **2 · Discover Talent** | *Who should we hire?* | Section B — Talent Discovery Dashboard, Hidden Talent Search |
-| **3 · Take Action** | *What do I do next?* | Section B — Talent Intelligence Copilot |
+| **3 · Take Action** | *What do I do next?* | Section C — Recommended Recruiting Actions |
 
-## Section A — Market Intelligence
+## Section A — Know the Market
 
 ### ASEAN Overview
 
@@ -41,7 +43,7 @@ A country picker (Singapore, Malaysia, Vietnam, Philippines, Thailand, Indonesia
 
 Exports the active profile to CSV.
 
-## Section B — Talent Discovery
+## Section B — Discover Talent
 
 ### Talent Discovery Dashboard
 
@@ -51,17 +53,36 @@ Operational, action-oriented. Talent pool coverage by country, target school cov
 
 Search across **all** talent pools at once, not just the one you own — the point is to surface qualified people already in the system but parked in the wrong profession's pool. Filters: **School, Graduation Year, Degree, Major, Skills, Country, Talent Pool** (plus a free-text role). Results are split into *direct* matches and *hidden* matches (right skills, wrong pool), rendered as candidate cards with school, degree, graduation, country, skills, current pool and stage.
 
-### Talent Intelligence Copilot ⭐
+## Section C — Take Action
 
-The flagship surface. A conversational recruiter assistant with suggested prompts:
+### Recommended Recruiting Actions ⭐
 
-- Who should I engage next?
-- Which ASEAN schools are underrepresented?
-- Show hidden SWE talent in Malaysia graduating in 2027.
-- Which talent pools can support Software Engineer hiring in Vietnam?
-- What recruiting actions should I prioritize this month?
+The flagship surface, and the reason this is a decision intelligence platform rather than a dashboard with a chatbot bolted on. The page generates its recommendations **before** the recruiter asks anything, and answers four questions on sight: *where should we hire, which schools should we engage, where are our talent gaps, what should we do next.*
 
-Questions are routed by keyword to a set of answer builders that compute over the live mock datasets. Answers parse a country and a class-of year out of free text where relevant, cite the Low/Medium/High market bands from Section A, and end with suggested next actions rendered as clickable chips that drive the rest of the app.
+**1 · Prioritised actions.** Four ranked recommendation cards, each one a claim plus the evidence for it — rationale, four supporting metrics, a mini chart and action tags that deep-link into search, a country profile, or a Copilot explanation.
+
+| # | Recommendation | Backed by |
+|---|---|---|
+| 1 | Prioritize Vietnam for FY28 intern hiring | Addressable pipeline, fastest ASEAN growth, Low cost × High supply bands |
+| 2 | Expand coverage to HCMUT and ITB | Tier-1 concentration of high potentials sitting below the coverage threshold |
+| 3 | Thailand coverage is below the ASEAN average | School coverage % against the regional benchmark |
+| 4 | Malaysia's graduate pipeline peaks in Q4 | Real quarterly cohort distribution against the Aug–Oct graduation window |
+
+**2 · ASEAN talent opportunity map.** A stylised regional map — the silhouette is a plain lon/lat projection, so the pins land where the markets actually are. Each market carries its headline signal (high opportunity, coverage gap, graduate timing, large talent pool, growing pipeline, premium market) and is clickable, driving a side panel with bands, pipeline, coverage, graduation window and the channel that works there.
+
+**3 · Key insights.** Total ASEAN talent pool, target schools tracked, average school coverage, and markets with growing pipelines.
+
+**4 · Ask Talent Intelligence Copilot.** Deliberately demoted to the bottom of the page as a secondary *explain and explore* layer. It interrogates the recommendations rather than replacing them:
+
+- Why is Vietnam recommended?
+- Which schools similar to HCMUT should I prioritize?
+- Create a campus engagement strategy.
+- Compare Vietnam and Indonesia.
+- Generate a FY28 internship hiring plan.
+
+Questions are routed by keyword to a set of answer builders that compute over the live mock datasets. `why` scores every signal it weighs and reports the ones that *count against* the recommendation too; `compare` scores two markets head to head; `plan` sequences markets by when their internship window opens. Answers parse a country, school or fiscal year out of free text where relevant, cite the Low/Medium/High market bands from Section A, and end with suggested next actions rendered as clickable chips that drive the rest of the app.
+
+The Export button on this tab writes the four recommendations plus the per-market opportunity signals to CSV.
 
 ## Data & wiring notes
 
@@ -80,12 +101,12 @@ index.html             page shell, sidebar IA, journey ribbon, all three views
 assets/styles.css      dark theme, Fluent tokens, Section A + journey styles
 assets/app.js          shared helpers, delegated router, journey ribbon, window.UI bridge
 assets/market.js       Section A — overview, country profiles, CSV exporters
-assets/engine.js       Section B — dashboard, hidden talent search, Copilot
+assets/engine.js       Section B — dashboard, hidden talent search; Section C — recommendations, map, Copilot
 data/data.js           countries, tiers, target schools, calendars, majors
 data/market.js         market bands, calendars, pipeline, country prose, AI insights
 data/talentpool.js     nine talent pools, stage definitions, candidate generator
 data/discovery.js      job functions, market intel notes, outreach templates
-data/engine.js         professions, demand, skill adjacency, Copilot prompts + intent rules
+data/engine.js         professions, demand, skill adjacency, opportunity map, Copilot prompts + intent rules
 ```
 
 Scripts are classic (non-module) and **load order matters** — `data/*` before `assets/*`, and `assets/app.js` before the two section modules, which consume its `window.UI` bridge (helpers, `go()`, `syncJourney()` and a pluggable `UI.exporters` map).

@@ -1,5 +1,5 @@
 /* ==================================================================
- * SECTION A — MARKET INTELLIGENCE
+ * SECTION A — KNOW THE MARKET
  * ------------------------------------------------------------------
  * Two surfaces, one question: "Where should we hire?"
  *

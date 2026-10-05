@@ -126,23 +126,80 @@ const ENGINE_WEIGHTS = {
   skillPenalty: 10 /* none of the requested skills present */
 };
 
-/* Suggested prompts for the Talent Intelligence Copilot. `intent` binds
- * the prompt to an answer generator in assets/engine.js — this is a
- * talent-intelligence assistant, not an open chatbot. */
+/* ------------------------------------------------------------------
+ * SECTION C — RECOMMENDED RECRUITING ACTIONS
+ * ------------------------------------------------------------------
+ * The opportunity map. `label` is the headline signal the recruiter is
+ * meant to read off the map; `x` / `y` are percentages inside the
+ * stylised ASEAN silhouette drawn by assets/engine.js, derived from the
+ * real capital-city coordinates so the pins land where they should.
+ * ------------------------------------------------------------------ */
+const ENGINE_OPPORTUNITY = {
+  VN: { label: "High opportunity",       tone: "hot",     x: 41.4, y: 18.2, side: "right" },
+  TH: { label: "Coverage gap",           tone: "gap",     x: 24.3, y: 21.2, side: "left"  },
+  PH: { label: "Growing pipeline",       tone: "grow",    x: 82.9, y: 22.5, side: "left"  },
+  MY: { label: "Strong graduate timing", tone: "time",    x: 27.7, y: 57.2, side: "left"  },
+  SG: { label: "Premium, speed-driven",  tone: "premium", x: 33.7, y: 62.8, side: "right" },
+  ID: { label: "Large talent pool",      tone: "volume",  x: 42.3, y: 85.4, side: "right" }
+};
+
+/* Simplified ASEAN landmasses, drawn in a 0 0 100 76 viewBox. The
+ * coordinates come from a plain linear projection of real lon/lat
+ * (x = (lon - 92) × 2.857, y = (22 - lat) × 2.303), so the silhouette is
+ * geographically honest even though the outlines are coarse. */
+const ENGINE_MAP_SHAPES = [
+  /* mainland Indochina */
+  "5.7,2.3 14.3,0 25.7,0 32.9,0 40,0 45.7,1.2 50,9.2 48.6,16.1 41.4,26.5 38.6,30.9 " +
+  "34.3,28.8 31.4,25.3 30,23 24.3,19.6 23.7,32.2 20,28.8 18.6,23 17.1,13.8 14.3,10.4 7.1,4.6",
+  /* peninsular Malaysia */
+  "23.1,35.7 25.7,35.7 30,37.3 32.9,39.6 34.9,44.2 33.1,47.7 31.4,47 28.6,44.9 25.7,42.6 23.7,39.2",
+  /* Sumatra */
+  "9.4,38 17.1,42.6 25.7,48.4 34.3,55.3 39.4,64 34.3,64.2 28.6,59.9 22.9,54.1 15.7,47.2 9.1,38.7",
+  /* Java */
+  "37.7,66.2 51.4,65.3 64.3,69.5 64,70.9 51.4,69.5 38.6,67.8",
+  /* Borneo */
+  "48.6,46.1 57.1,43.3 65.7,38.9 71.9,41 77.1,38.2 76.6,43.8 71.4,48.4 70,55.3 62.9,58.7 " +
+  "54.3,57.6 50,53 48.3,48.8",
+  /* Sulawesi */
+  "78.6,48.4 82.9,49.5 88.6,48.8 94.3,47.2 92.9,50.7 85.7,51.8 84.3,57.6 82.3,63.3 79.4,62.8 80.9,57.6 78.6,53",
+  /* Luzon */
+  "80.9,8.1 84.3,8.5 86.6,10.8 85.1,15.4 87.1,18.4 84.3,18.9 81.7,17.3 80,14.3 79.4,10.4",
+  /* Visayas */
+  "85.7,24.2 92.9,23.5 95.7,26.5 90,28.8 85.7,27.6",
+  /* Mindanao */
+  "85.4,32.2 91.4,30.9 97.7,31.8 97.1,35.7 91.4,37.1 86.3,34.8"
+];
+
+/* Suggested prompts for the Talent Intelligence Copilot. The Copilot is
+ * a secondary "explain & explore" layer under the recommendations, so
+ * every prompt interrogates or extends a recommendation rather than
+ * opening a blank conversation. `intent` binds the prompt to an answer
+ * generator in assets/engine.js. */
 const ENGINE_PROMPTS = [
-  { intent: "engage",     icon: "✉",  text: "Who should I engage next?" },
-  { intent: "coverage",   icon: "🎓", text: "Which ASEAN schools are underrepresented?" },
-  { intent: "hidden",     icon: "🔎", text: "Show hidden SWE talent in Malaysia graduating in 2027." },
-  { intent: "market",     icon: "🌏", text: "Which talent pools can support Software Engineer hiring in Vietnam?" },
-  { intent: "priorities", icon: "🗓", text: "What recruiting actions should I prioritize this month?" },
-  { intent: "cohorts",    icon: "📅", text: "Which graduation cohorts are underrepresented?" },
-  { intent: "attention",  icon: "⚠",  text: "Which universities have gone quiet?" },
-  { intent: "datacenter", icon: "▤",  text: "Where are my strongest data center pipelines?" }
+  { intent: "why",      icon: "❓", text: "Why is Vietnam recommended?" },
+  { intent: "similar",  icon: "🎓", text: "Which schools similar to HCMUT should I prioritize?" },
+  { intent: "strategy", icon: "🗺", text: "Create a campus engagement strategy." },
+  { intent: "compare",  icon: "⚖",  text: "Compare Vietnam and Indonesia." },
+  { intent: "plan",     icon: "🗓", text: "Generate a FY28 internship hiring plan." }
 ];
 
 /* Keyword routing for anything typed free-hand into the Copilot. Checked
- * in order; first rule that matches all of its `all` terms wins. */
+ * in order; first rule that matches all of its `all` terms wins. The
+ * recommendation-explaining intents are checked first, because a question
+ * like "why is Vietnam recommended?" also names a market and would
+ * otherwise fall through to the generic market answer. */
 const ENGINE_INTENT_RULES = [
+  { intent: "why",        any: ["why is", "why are", "why do you", "why vietnam", "why recommend",
+                                "why recommended", "explain this", "explain the recommend",
+                                "justify", "what is the evidence"] },
+  { intent: "similar",    any: ["similar to", "schools like", "universities like", "comparable school",
+                                "schools similar", "same profile as"] },
+  { intent: "strategy",   any: ["engagement strategy", "campus strategy", "campus engagement",
+                                "create a strategy", "build a strategy", "recruiting strategy",
+                                "go-to-market"] },
+  { intent: "plan",       any: ["hiring plan", "internship plan", "intern hiring", "recruiting plan",
+                                "fy28", "fy27", "fy 28", "generate a plan", "intake plan"] },
+  { intent: "compare",    any: ["compare", " vs ", " versus ", "difference between", "or indonesia"] },
   { intent: "hidden",     any: ["hidden", "overlooked", "other pool", "cross-pool", "untapped"] },
   { intent: "coverage",   any: ["underrepresented school", "schools are underrepresented",
                                 "coverage", "target school", "campus coverage", "university coverage"] },

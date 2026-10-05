@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Talent Strategy Hub for ASEAN EIP</title>
+<title>ASEAN EIP Talent Intelligence Engine</title>
 <link rel="stylesheet" href="assets/styles.css">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌏</text></svg>">
 </head>
@@ -11,23 +11,22 @@
 
 <aside class="sidebar">
   <div class="brand">
-    <div class="brand-mark">TS</div>
-    <div>
-      <div class="brand-name">Talent Strategy Hub</div>
-      <div class="brand-sub">for ASEAN EIP</div>
-    </div>
+    <div class="brand-mark">AE</div>
+    <div class="brand-name">ASEAN EIP Talent Intelligence Engine</div>
   </div>
 
   <nav id="nav">
-    <div class="nav-section"><span class="ns-n">A</span>Market Intelligence</div>
+    <div class="nav-section"><span class="ns-n">A</span>Know the Market</div>
     <a class="nav-item active" data-view="overview"><span class="ni">🌏</span>ASEAN Overview</a>
     <a class="nav-item" data-view="country"><span class="ni">📍</span>Country Profiles</a>
     <div class="nav-sub" id="navCountries"></div>
 
-    <div class="nav-section"><span class="ns-n">B</span>Talent Discovery</div>
+    <div class="nav-section"><span class="ns-n">B</span>Discover Talent</div>
     <a class="nav-item" data-view="engine" data-tab="dashboard"><span class="ni">📊</span>Talent Discovery Dashboard</a>
     <a class="nav-item" data-view="engine" data-tab="search"><span class="ni">🔎</span>Hidden Talent Search</a>
-    <a class="nav-item" data-view="engine" data-tab="copilot"><span class="ni">🧠</span>Talent Intelligence Copilot<span class="ni-flag">Flagship</span></a>
+
+    <div class="nav-section"><span class="ns-n">C</span>Take Action</div>
+    <a class="nav-item" data-view="engine" data-tab="copilot"><span class="ni">✦</span>Recommended Recruiting Actions<span class="ni-flag">Flagship</span></a>
   </nav>
 
   <div class="side-foot">
@@ -55,7 +54,7 @@
     </div>
   </div>
 
-  <!-- ===================== SECTION A · MARKET INTELLIGENCE ===================== -->
+  <!-- ===================== SECTION A · KNOW THE MARKET ===================== -->
 
   <!-- ============================= ASEAN OVERVIEW ============================= -->
   <section class="view fluent active" id="view-overview">
@@ -135,11 +134,11 @@
     <div id="cpBody"></div>
   </section>
 
-  <!-- ===================== SECTION B · TALENT DISCOVERY ===================== -->
+  <!-- ============== SECTION B · DISCOVER TALENT / SECTION C · TAKE ACTION ============== -->
   <section class="view fluent" id="view-engine">
     <header class="page-head">
       <div>
-        <h1>Talent Discovery</h1>
+        <h1>Discover Talent</h1>
         <p class="lead">Identify, discover and prioritise talent across every ASEAN talent pool. See where the
           pipeline is thin, surface the qualified people you already hold but overlooked, then act on the
           recommendations.</p>
@@ -153,7 +152,7 @@
       <button class="pivot-tab" data-tab="search" role="tab">
         <span class="pv-n">2</span>Hidden Talent Search</button>
       <button class="pivot-tab" data-tab="copilot" role="tab">
-        <span class="pv-n">3</span>Talent Intelligence Copilot<span class="pv-flag">Flagship</span></button>
+        <span class="pv-n">3</span>Recommended Recruiting Actions<span class="pv-flag">Flagship</span></button>
     </div>
 
     <!-- =============== TAB 1 · TALENT DISCOVERY DASHBOARD =============== -->
@@ -294,20 +293,77 @@
       </div>
     </div>
 
-    <!-- =============== TAB 3 · TALENT INTELLIGENCE COPILOT =============== -->
+    <!-- =============== TAB 3 · RECOMMENDED RECRUITING ACTIONS =============== -->
     <div class="eng-pane" id="eng-copilot">
-      <div class="cop-wrap">
-        <div class="cop-thread" id="engThread"></div>
 
-        <div class="cop-composer">
-          <div class="cop-sugg" id="engPrompts"></div>
-          <div class="cop-input">
-            <span class="cop-spark">✨</span>
-            <input id="engAsk" class="input" placeholder="Ask about markets, coverage, hidden talent or who to engage next…" autocomplete="off">
-            <button class="btn primary" id="engAskBtn">Ask</button>
+      <!-- ---------- masthead ---------- -->
+      <div class="rec-head">
+        <span class="rec-badge"><i>✦</i>AI-generated recruiting strategy</span>
+        <h2>Recommended Recruiting Actions</h2>
+        <p class="rec-sub">AI-powered recommendations generated from market intelligence, talent pool
+          analysis, school coverage, graduation trends, and ASEAN recruiting signals.</p>
+        <p class="rec-line">Know the market. &nbsp;Discover hidden talent. &nbsp;Take action.</p>
+      </div>
+
+      <!-- ---------- 1 · prioritised actions ---------- -->
+      <div class="eng-h">
+        <div>
+          <h2>Prioritised actions</h2>
+          <p class="sub-txt">Ranked by expected impact on early-career hiring. Every number is recomputed
+            from the live talent-pool and market model.</p>
+        </div>
+        <span class="eng-h-note" id="recAsOf"></span>
+      </div>
+      <div class="rec-grid" id="recActions"></div>
+
+      <!-- ---------- 2 · opportunity map ---------- -->
+      <div class="eng-h">
+        <div>
+          <h2>ASEAN talent opportunity map</h2>
+          <p class="sub-txt">Select a market to read the signal behind its recommendation.</p>
+        </div>
+        <span class="eng-h-note" id="recLegend"></span>
+      </div>
+      <div class="fpanel rec-map-panel">
+        <div class="rec-map-grid">
+          <div class="rec-map" id="recMap"></div>
+          <aside class="rec-side" id="recSide"></aside>
+        </div>
+      </div>
+
+      <!-- ---------- 3 · key insights ---------- -->
+      <div class="eng-h">
+        <div>
+          <h2>Key insights</h2>
+          <p class="sub-txt">The four numbers the recommendations above are built on.</p>
+        </div>
+      </div>
+      <div class="kpi-row" id="recKpis"></div>
+
+      <!-- ---------- 4 · Copilot, as a secondary explain layer ---------- -->
+      <div class="eng-h">
+        <div>
+          <h2>Ask Talent Intelligence Copilot</h2>
+          <p class="sub-txt">Get deeper analysis, compare markets, understand recommendations,
+            or generate a recruiting strategy.</p>
+        </div>
+        <span class="eng-h-note">Explain &amp; explore</span>
+      </div>
+      <div class="fpanel cop-panel">
+        <div class="cop-wrap">
+          <div class="cop-thread" id="engThread"></div>
+
+          <div class="cop-composer">
+            <div class="cop-sugg" id="engPrompts"></div>
+            <div class="cop-input">
+              <span class="cop-spark">✨</span>
+              <input id="engAsk" class="input" placeholder="Ask why a market is recommended, compare two markets, or request a plan…" autocomplete="off">
+              <button class="btn primary" id="engAskBtn">Ask</button>
+            </div>
+            <p class="disclaim">Recommendations and answers are computed live from the market model and
+              talent-pool data in this prototype — no external model or API is called, and every number
+              here is mock data.</p>
           </div>
-          <p class="disclaim">Answers are computed live from the market model and talent-pool data in this
-            prototype — no external model or API is called, and every number here is mock data.</p>
         </div>
       </div>
     </div>

@@ -1,4 +1,4 @@
-# Product Requirements Document — Talent Strategy Hub for ASEAN EIP
+# Product Requirements Document — ASEAN EIP Talent Intelligence Engine
 
 **Document type:** As-built PRD (reverse-engineered from the current implementation)
 **Version:** 1.0 · 25 September 2026
@@ -6,8 +6,8 @@
 **Scope:** `index.html`, `assets/*.js`, `assets/styles.css`, `data/*.js`
 
 > ⚠️ **Superseded — describes the v1.0 information architecture.**
-> The application has since been rebuilt as **Talent Strategy Hub for ASEAN EIP**, organised around the recruiter decision journey *Know the Market → Discover Talent → Take Action*:
-> **Section A · Market Intelligence** (ASEAN Overview, Country Profiles) and **Section B · Talent Discovery** (Talent Discovery Dashboard, Hidden Talent Search, Talent Intelligence Copilot).
+> The application has since been rebuilt as the **ASEAN EIP Talent Intelligence Engine**, organised around the recruiter decision journey *Know the Market → Discover Talent → Take Action*:
+> **Section A · Know the Market** (ASEAN Overview, Country Profiles), **Section B · Discover Talent** (Talent Discovery Dashboard, Hidden Talent Search) and **Section C · Take Action** (Recommended Recruiting Actions).
 > The v1.0 Section A pages (Top Schools, Salary Benchmark, Academic Calendar) and the old Section B / Section C split no longer exist, and salary figures have been replaced by qualitative Low / Medium / High market bands.
 > See `README.md` for the current architecture. The sections below remain useful as background on the data model and design principles, which carried over unchanged.
 
@@ -17,7 +17,7 @@
 
 > **Give an early-careers recruiting team one browser tab that answers three questions: where is the talent, what is it worth, and who in our own pipeline are we already ignoring?**
 
-The Talent Strategy Hub for ASEAN EIP is a self-contained decision-support surface for campus and early-career hiring across six Southeast Asian markets — **Singapore, Malaysia, Indonesia, the Philippines, Thailand and Vietnam**. It combines three layers that normally live in three different systems:
+The ASEAN EIP Talent Intelligence Engine is a self-contained decision-support surface for campus and early-career hiring across six Southeast Asian markets — **Singapore, Malaysia, Indonesia, the Philippines, Thailand and Vietnam**. It combines three layers that normally live in three different systems:
 
 | Layer | Question answered | Section |
 |---|---|---|

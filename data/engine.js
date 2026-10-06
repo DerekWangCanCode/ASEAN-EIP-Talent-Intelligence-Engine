@@ -212,3 +212,76 @@ const ENGINE_INTENT_RULES = [
   { intent: "datacenter", any: ["data center", "data centre", "datacenter", "critical facilities", "dc pipeline"] },
   { intent: "market",     any: ["singapore", "malaysia", "philippines", "thailand", "vietnam", "indonesia", "market", "country"] }
 ];
+
+/* ------------------------------------------------------------------
+ * NATURAL-LANGUAGE RECRUITING INTELLIGENCE SCENARIOS
+ * ------------------------------------------------------------------
+ * The three questions the free-text box can answer end to end. Each
+ * scenario carries the suggested question shown under the input and a
+ * set of weighted keyword groups used for intent detection.
+ *
+ * Detection is keyword scoring, not exact-text matching: a group scores
+ * its weight once if ANY of its terms appear (matched on word
+ * boundaries, so "mai" never fires inside "email" or "domain"). The
+ * highest-scoring scenario wins, provided it clears COPILOT_MIN_SCORE
+ * and matched at least one strong (weight >= 2) group.
+ *
+ * Everything the answers quote is derived from the mock data already in
+ * this prototype — COUNTRIES, SCHOOLS, SALARY, MARKET_*, TALENT_POOLS
+ * and TALENT_POOL_CANDIDATES. No external API, no model call.
+ * ------------------------------------------------------------------ */
+const COPILOT_MIN_SCORE = 3;
+
+const COPILOT_SCENARIOS = [
+  {
+    id: "market-pick",
+    icon: "🌏",
+    kicker: "Where should we hire",
+    question: "I want to hire 5 Applied Scientists in ASEAN. Which country should I target and why?",
+    groups: [
+      { w: 3, any: ["applied scientist", "applied scientists", "research scientist", "data scientist",
+                    "machine learning engineer", "ml engineer", "ai engineer", "ai researcher",
+                    "ai talent", "research engineer"] },
+      { w: 2, any: ["which country", "what country", "which market", "what market", "where should i hire",
+                    "where to hire", "where do i hire", "country should i target", "country to target",
+                    "target country", "best country"] },
+      { w: 2, any: ["asean", "south east asia", "southeast asia", "region", "regional"] },
+      { w: 1, any: ["hire", "hiring", "recruit", "headcount", "why", "scientist", "scientists"] }
+    ]
+  },
+  {
+    id: "candidate-shortlist",
+    icon: "🎯",
+    kicker: "Who should we shortlist",
+    question: "I need to hire a Customer Success Account Manager in Malaysia. Give me the top 3 candidates in Talent Pool. " +
+      "Criteria: 0-2 year experience, top school, prior client-facing experience.",
+    groups: [
+      { w: 3, any: ["csam", "customer success", "account manager", "client-facing", "client facing",
+                    "customer facing", "customer-facing", "renewals", "adoption"] },
+      { w: 2, any: ["talent pool", "candidates", "candidate", "shortlist", "top 3", "top three",
+                    "best people", "who should i interview", "profiles"] },
+      { w: 2, any: ["malaysia", "malaysian", "kuala lumpur", "klang valley", "penang"] },
+      { w: 1, any: ["0-2", "0 - 2", "two years", "experience", "top school", "fresh grad", "graduate",
+                    "criteria", "rank", "ranking"] }
+    ]
+  },
+  {
+    id: "expansion",
+    icon: "🧭",
+    kicker: "Where do we expand next",
+    question: "MAI plans to expand outside Vietnam. Which country should be the next target? " +
+      "Analyze from talent supply and budget perspectives.",
+    groups: [
+      { w: 3, any: ["outside vietnam", "beyond vietnam", "expand outside", "expand beyond",
+                    "next country", "next target", "next market", "second market", "diversify"] },
+      { w: 2, any: ["mai", "expand", "expansion", "expanding", "scale out", "footprint", "open a new"] },
+      { w: 2, any: ["talent supply", "budget", "cost", "salary", "spend", "supply and budget"] },
+      { w: 1, any: ["country", "market", "analyze", "analyse", "vietnam", "perspective", "perspectives"] }
+    ]
+  }
+];
+
+/* Shown when a typed question matches none of the scenarios above. */
+const COPILOT_UNSUPPORTED =
+  "This prototype currently supports 3 recruiting intelligence scenarios. " +
+  "Please select one of the suggested questions.";

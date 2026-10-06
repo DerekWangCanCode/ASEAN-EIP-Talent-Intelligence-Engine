@@ -344,26 +344,28 @@
       <div class="eng-h">
         <div>
           <h2>Ask Talent Intelligence Copilot</h2>
-          <p class="sub-txt">Get deeper analysis, compare markets, understand recommendations,
-            or generate a recruiting strategy.</p>
+          <p class="sub-txt">Ask a recruiting question in plain English — which market to target, who to
+            shortlist from the talent pool, where to expand next — and get a structured answer back.</p>
         </div>
-        <span class="eng-h-note">Explain &amp; explore</span>
+        <span class="eng-h-note">Natural language &middot; 3 scenarios</span>
       </div>
       <div class="fpanel cop-panel">
         <div class="cop-wrap">
-          <div class="cop-thread" id="engThread"></div>
 
           <div class="cop-composer">
-            <div class="cop-sugg" id="engPrompts"></div>
             <div class="cop-input">
               <span class="cop-spark">✨</span>
-              <input id="engAsk" class="input" placeholder="Ask why a market is recommended, compare two markets, or request a plan…" autocomplete="off">
-              <button class="btn primary" id="engAskBtn">Ask</button>
+              <input id="engAsk" class="input" placeholder="e.g. I want to hire 5 Applied Scientists in ASEAN. Which country should I target and why?" autocomplete="off">
+              <button class="btn primary" id="engAskBtn">Analyze</button>
             </div>
-            <p class="disclaim">Recommendations and answers are computed live from the market model and
-              talent-pool data in this prototype — no external model or API is called, and every number
-              here is mock data.</p>
+            <div class="cop-sugg-h">Suggested questions</div>
+            <div class="cop-sugg" id="engPrompts"></div>
+            <p class="disclaim"><b>Prototype &middot; mock data.</b> Every recommendation, candidate,
+              salary band and market signal below is generated from the mock datasets shipped with this
+              prototype. No external model or API is called. Validate before any real hiring decision.</p>
           </div>
+
+          <div class="cop-thread" id="engThread"></div>
         </div>
       </div>
     </div>

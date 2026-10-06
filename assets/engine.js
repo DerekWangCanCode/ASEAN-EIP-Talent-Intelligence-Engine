@@ -1276,15 +1276,16 @@ function renderInsights() {
  * ========================================================== */
 function initCopilot() {
   $("#engPrompts").innerHTML = "";
-  ENGINE_PROMPTS.forEach(p => {
-    const b = el("button", "sugg-chip", `<span>${p.icon}</span>${esc(p.text)}`);
-    b.addEventListener("click", () => ask(p.text, p.intent));
+  COPILOT_SCENARIOS.forEach(s => {
+    const b = el("button", "sugg-chip", `<span>${s.icon}</span>${esc(s.question)}`);
+    b.addEventListener("click", () => analyze(s.question));
     $("#engPrompts").appendChild(b);
   });
 
   $("#engAskBtn").addEventListener("click", () => {
     const v = $("#engAsk").value.trim();
-    if (v) { ask(v); $("#engAsk").value = ""; }
+    if (v) analyze(v);
+    else toast("Type a question, or pick one of the suggested questions");
   });
   $("#engAsk").addEventListener("keydown", e => {
     if (e.key === "Enter") $("#engAskBtn").click();
@@ -1294,43 +1295,62 @@ function initCopilot() {
 }
 
 function greet() {
-  $("#engThread").innerHTML = "";
-  bot(`<div class="cop-hi">
-      <h3>I explain the recommendations above</h3>
-      <p>The four actions are already generated from the same
-        ${CAND.length.toLocaleString()} candidate records the dashboard and search use. Ask me to
-        justify one, compare two markets, widen a school shortlist or turn any of it into a plan.</p>
-    </div>`);
+  $("#engThread").innerHTML = `
+    <div class="ans-idle">
+      <h3>Ask in plain English &mdash; get a structured answer, not a paragraph</h3>
+      <p>Questions are answered from the data already in this prototype:
+        ${CAND.length.toLocaleString()} talent-pool records, ${SCHOOL_STATS.length} target schools,
+        the ASEAN salary benchmarks and the market model. Three recruiting scenarios are supported.</p>
+      <ul class="ans-idle-list">
+        ${COPILOT_SCENARIOS.map(s => `<li><span>${s.icon}</span>
+          <div><b>${esc(s.kicker)}</b><i>${esc(s.question)}</i></div></li>`).join("")}
+      </ul>
+    </div>`;
 }
 
 function reveal(node) {
-  if (node.scrollIntoView) node.scrollIntoView({ behavior: "smooth", block: "end" });
+  if (node.scrollIntoView) node.scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 
-function bot(html, chips) {
-  const m = el("div", "cop-msg bot");
-  m.innerHTML = `<div class="cop-av">&#10024;</div><div class="cop-bub">${html}</div>`;
-  if (chips && chips.length) {
-    const row = el("div", "cop-follow");
-    chips.forEach(ch => {
-      const b = el("button", "chip sm", esc(ch.text));
-      b.addEventListener("click", () => ch.run());
-      row.appendChild(b);
-    });
-    m.querySelector(".cop-bub").appendChild(row);
+/* ============================================================
+ * Intent detection
+ * ------------------------------------------------------------
+ * Keyword scoring rather than exact-text matching. Every keyword
+ * group scores its weight once if any of its terms appears, matched
+ * on word boundaries so a short token such as "mai" cannot fire
+ * inside "email" or "domain". The highest-scoring scenario wins if
+ * it clears the minimum score and matched one strong group.
+ * ========================================================== */
+const KW_CACHE = {};
+function hasKeyword(t, kw) {
+  let re = KW_CACHE[kw];
+  if (!re) {
+    re = KW_CACHE[kw] = new RegExp(
+      "(^|[^a-z0-9])" + kw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "([^a-z0-9]|$)", "i");
   }
-  $("#engThread").appendChild(m);
-  reveal(m);
-  return m;
+  return re.test(t);
 }
 
-function user(text) {
-  const m = el("div", "cop-msg me");
-  m.innerHTML = `<div class="cop-bub">${esc(text)}</div><div class="cop-av me">You</div>`;
-  $("#engThread").appendChild(m);
-  reveal(m);
+function detectScenario(text) {
+  const t = String(text || "").toLowerCase();
+  let best = null;
+  COPILOT_SCENARIOS.forEach(s => {
+    let total = 0, strong = 0;
+    const hits = [];
+    s.groups.forEach(g => {
+      const hit = g.any.find(k => hasKeyword(t, k));
+      if (!hit) return;
+      total += g.w;
+      hits.push(hit);
+      if (g.w >= 2) strong++;
+    });
+    if (!best || total > best.total) best = { scenario: s, total: total, strong: strong, hits: hits };
+  });
+  return best && best.total >= COPILOT_MIN_SCORE && best.strong > 0 ? best : null;
 }
 
+/* Legacy keyword routing, still used by the in-page chips that
+ * deep-link into an explanation from a recommendation card. */
 function routeIntent(text) {
   const t = text.toLowerCase();
   for (const rule of ENGINE_INTENT_RULES) {
@@ -1339,16 +1359,115 @@ function routeIntent(text) {
   return null;
 }
 
-function ask(text, forced) {
+/* ============================================================
+ * Answer surface
+ * ========================================================== */
+const DISCLAIMER = "Recommendations are based on mock data in this prototype. Candidates, salary bands, " +
+  "school coverage and market signals are generated for demonstration only — no live ATS, compensation " +
+  "feed or external model is used.";
+
+let askSeq = 0;
+
+/* Short loading animation, then build. Keeping it on a sequence
+ * number means a second question cancels the first one cleanly. */
+function runAsk(question, build) {
   showTab("copilot");
-  user(text);
-  const intent = forced || routeIntent(text);
-  const thinking = bot(`<div class="cop-think"><i></i><i></i><i></i> Reading talent pools&hellip;</div>`);
+  const seq = ++askSeq;
+  const steps = ["Reading the question",
+    "Scanning " + CAND.length.toLocaleString() + " talent-pool records",
+    "Comparing market, salary and school data",
+    "Composing the recommendation"];
+
+  $("#engThread").innerHTML = `
+    <article class="ans is-loading">
+      <header class="ans-q"><span class="ans-q-av">You</span><p>${esc(question)}</p></header>
+      <div class="cop-think"><i></i><i></i><i></i><span id="copStep">${esc(steps[0])}&hellip;</span></div>
+      <div class="ans-skel"><i></i><i></i><i></i></div>
+    </article>`;
+
+  let i = 0;
+  const tick = setInterval(() => {
+    const n = $("#copStep");
+    if (!n || seq !== askSeq) return clearInterval(tick);
+    if (++i < steps.length) n.innerHTML = esc(steps[i]) + "&hellip;";
+  }, 330);
+
   setTimeout(() => {
-    thinking.remove();
-    const a = ANSWERS[intent] ? ANSWERS[intent](text) : ANSWERS.fallback(text);
-    bot(a.html, a.chips);
-  }, 480);
+    clearInterval(tick);
+    if (seq === askSeq) build();
+  }, 1340);
+}
+
+function renderAnswer(question, kicker, html, chips) {
+  const art = el("article", "ans");
+  art.innerHTML = `
+    <header class="ans-q"><span class="ans-q-av">You</span><p>${esc(question)}</p></header>
+    <div class="ans-head">
+      <span class="ans-badge"><i>&#10022;</i>${esc(kicker || "Analysis")}</span>
+      <span class="ans-note">Generated from the prototype's mock datasets</span>
+    </div>
+    <div class="ans-body">${html}</div>
+    <footer class="ans-follow"></footer>
+    <p class="ans-disclaim"><b>Mock data.</b> ${esc(DISCLAIMER)}</p>`;
+
+  const foot = art.querySelector(".ans-follow");
+  (chips || []).forEach(ch => {
+    const b = el("button", "chip sm", esc(ch.text));
+    b.addEventListener("click", () => ch.run());
+    foot.appendChild(b);
+  });
+  if (!foot.childNodes.length) foot.remove();
+
+  $("#engThread").innerHTML = "";
+  $("#engThread").appendChild(art);
+  reveal(art);
+}
+
+function renderUnsupported(question) {
+  renderAnswer(question, "Not supported yet", `
+    <div class="ans-empty">
+      <span class="ans-empty-ic">&#9888;</span>
+      <div>
+        <h3>${esc(COPILOT_UNSUPPORTED)}</h3>
+        <p>Intent detection looks for recruiting keywords — a role, a market, a talent-pool request or an
+          expansion question. Nothing in that question matched one of the supported scenarios.</p>
+      </div>
+    </div>
+    <ul class="ans-idle-list">
+      ${COPILOT_SCENARIOS.map(s => `<li><span>${s.icon}</span>
+        <div><b>${esc(s.kicker)}</b><i>${esc(s.question)}</i></div></li>`).join("")}
+    </ul>`,
+    COPILOT_SCENARIOS.map(s => ({ text: s.icon + "  " + s.kicker, run: () => analyze(s.question) })));
+}
+
+/* Free-text entry point: the input box and the suggested questions.
+ * Only the three supported scenarios answer here. */
+function analyze(text) {
+  const q = String(text || "").trim();
+  if (!q) return;
+  $("#engAsk").value = "";
+  runAsk(q, () => {
+    const hit = detectScenario(q);
+    if (!hit) return renderUnsupported(q);
+    const a = SCENARIO_ANSWERS[hit.scenario.id](q, hit);
+    renderAnswer(q, hit.scenario.kicker, a.html, a.chips);
+  });
+}
+
+/* In-page entry point: the chips on the recommendation cards and the
+ * opportunity map, which explain what is already on the page. */
+function ask(text, forced) {
+  const q = String(text || "").trim();
+  runAsk(q, () => {
+    const hit = forced ? null : detectScenario(q);
+    if (hit) {
+      const sa = SCENARIO_ANSWERS[hit.scenario.id](q, hit);
+      return renderAnswer(q, hit.scenario.kicker, sa.html, sa.chips);
+    }
+    const intent = forced || routeIntent(q);
+    const a = ANSWERS[intent] ? ANSWERS[intent](q) : ANSWERS.fallback(q);
+    renderAnswer(q, "Explain & explore", a.html, a.chips);
+  });
 }
 
 /* ---------- answer builders ---------- */
@@ -2006,6 +2125,622 @@ const ANSWERS = {
           sitting in other pools.</p>
         <p class="sub-txt">Try one of the suggested prompts below.</p>`,
       chips: ENGINE_PROMPTS.slice(0, 3).map(p => askChip(p.text))
+    };
+  }
+};
+
+/* ============================================================
+ * SCENARIO ANSWERS
+ * ------------------------------------------------------------
+ * The three natural-language recruiting scenarios. Each one is
+ * assembled from data that already ships with the prototype:
+ *
+ *   COUNTRIES / SALARY / CALENDAR      data/data.js
+ *   MARKET_SIGNALS / _PIPELINE /       data/market.js
+ *     _PROFILE / _CALENDAR
+ *   SCHOOLS                            data/data.js
+ *   DISCOVERY_FUNCTIONS / MARKET_INTEL data/discovery.js
+ *   TALENT_POOLS / TALENT_POOL_...     data/talentpool.js
+ *
+ * Nothing is fetched and no model is called — the "analysis" is
+ * deterministic scoring over the mock datasets.
+ * ========================================================== */
+const THIS_YEAR = new Date().getFullYear();
+const MONTH_FULL = ["January", "February", "March", "April", "May", "June",
+                    "July", "August", "September", "October", "November", "December"];
+
+const money = (v, compact) => UI.fmtMoney(v, null, compact !== false);
+const usd = v => "US$" + Math.round(v).toLocaleString();
+const norm = (v, lo, hi) => (hi === lo ? 1 : (v - lo) / (hi - lo));
+const BAND_SCORE = { Low: 1, Medium: 0.55, High: 0.2 };
+
+function salaryBand(code, role, level) {
+  const roles = (SALARY[code] || {}).roles || [];
+  const r = roles.find(x => x.role === role) || roles[0];
+  if (!r || !r[level]) return null;
+  const b = r[level], mid = (b[0] + b[1]) / 2;
+  return { role: r.role, lo: b[0], hi: b[1], mid: mid,
+           loUSD: UI.toUSD(b[0], code), hiUSD: UI.toUSD(b[1], code), midUSD: UI.toUSD(mid, code) };
+}
+
+/* ---------- presentation blocks shared by the three answers ---------- */
+function ansSec(n, title, sub, body) {
+  return `<section class="ans-sec">
+    <header class="ans-sec-h"><span class="ans-sec-n">${esc(n)}</span>
+      <div><h4>${esc(title)}</h4>${sub ? `<p>${sub}</p>` : ""}</div></header>
+    ${body}</section>`;
+}
+
+function ansHero(o) {
+  return `<div class="ans-hero" style="--rc:${o.accent}">
+    <div class="ans-hero-top">
+      <span class="ans-hero-flag">${o.flag}</span>
+      <div class="ans-hero-id">
+        <span class="rec-kicker">${esc(o.kicker)}</span>
+        <h3>${esc(o.title)}</h3>
+      </div>
+      ${o.badge ? `<span class="ans-hero-badge">${o.badge}</span>` : ""}
+    </div>
+    <p class="rec-why">${o.lead}</p>
+    <div class="rec-metrics">${o.metrics.map(m =>
+      `<div class="rec-m"><span class="rec-m-v">${m.v}</span>
+        <span class="rec-m-k">${esc(m.k)}</span></div>`).join("")}</div>
+  </div>`;
+}
+
+const ansReasons = list => `<div class="ans-reasons">${list.map(r =>
+  `<div class="ans-reason"><span class="ans-reason-k">${esc(r.k)}</span>
+    <p>${r.t}</p></div>`).join("")}</div>`;
+
+const ansPlan = list => `<ol class="cop-plan">${list.map((a, i) =>
+  `<li><span class="cop-pri">${esc(a.pri || String(i + 1))}</span>
+    <div><b>${a.head}</b><div class="sub-txt">${a.why}</div></div></li>`).join("")}</ol>`;
+
+const ansTake = html => `<p class="cop-take"><b>Take:</b> ${html}</p>`;
+
+/* ---------- role profiles used by the market scenarios ---------- */
+const APPLIED_SCIENTIST = {
+  id: "applied-scientist", label: "Applied Scientist", pool: "ENG-SPEC",
+  titles: ["Applied Scientist", "Research Scientist", "Machine Learning Engineer"],
+  majors: ["Artificial Intelligence", "Data Science", "Computer Science",
+           "Mathematics / Statistics", "Computer Engineering"],
+  skills: ["PyTorch", "Computer Vision", "CUDA", "Python", "Analytics", "Data Platforms",
+           "SQL", "Distributed Systems", "Signal Processing", "Forecasting"]
+};
+const RESEARCH_STRENGTHS = ["Artificial Intelligence", "Data Science", "Computer Science",
+                            "Mathematics / Statistics"];
+const SOFTWARE_STRENGTHS = ["Computer Science", "Software Engineering", "Engineering",
+                            "Information Systems", "Artificial Intelligence", "Data Science"];
+
+/* Score every market for a role profile: supply, cost, competition, growth. */
+function marketFit(profile, salaryRole, strengths) {
+  const rows = CC_ORDER.map(code => {
+    const matches = CAND.filter(c => c.country === code)
+      .map(c => ({ c: c, s: score(c, profile, []) }))
+      .filter(x => x.s.score >= ENGINE_MATCH.good)
+      .sort((a, b) => b.s.score - a.s.score);
+    const schools = SCHOOLS.filter(s => s.country === code &&
+      s.strengths.some(x => strengths.indexOf(x) >= 0));
+    return {
+      code: code, name: cc(code).name, flag: cc(code).flag, currency: cc(code).currency,
+      stat: ctryStat(code), sig: sigOf(code), pipe: pipeOf(code), cal: calOf(code),
+      intel: intelOf(code), prof: (typeof MARKET_PROFILE !== "undefined" && MARKET_PROFILE[code]) || {},
+      matches: matches, n: matches.length,
+      strong: matches.filter(x => x.s.score >= ENGINE_MATCH.strong).length,
+      advanced: matches.filter(x => x.c.degreeLevel !== "Bachelor").length,
+      schools: schools, tier1: schools.filter(s => s.tier === 1),
+      band: salaryBand(code, salaryRole, "grad"),
+      costIndex: (SALARY[code] || {}).costIndex || 0,
+      burden: (SALARY[code] || {}).employerBurden || ""
+    };
+  });
+
+  const span = pick => {
+    const v = rows.map(pick);
+    return [Math.min.apply(null, v), Math.max.apply(null, v)];
+  };
+  const nS = span(r => r.n), aS = span(r => r.advanced),
+        rS = span(r => r.pipe.reachable || 0), gS = span(r => r.pipe.growth || 0),
+        cS = span(r => (r.band ? r.band.midUSD : 0));
+
+  rows.forEach(r => {
+    r.supplyScore = 0.45 * norm(r.n, nS[0], nS[1])
+                  + 0.30 * norm(r.advanced, aS[0], aS[1])
+                  + 0.25 * norm(r.pipe.reachable || 0, rS[0], rS[1]);
+    r.costScore   = 1 - norm(r.band ? r.band.midUSD : 0, cS[0], cS[1]);
+    r.compScore   = BAND_SCORE[r.sig.competition] || 0.5;
+    r.growthScore = norm(r.pipe.growth || 0, gS[0], gS[1]);
+    r.fit = 0.42 * r.supplyScore + 0.28 * r.costScore + 0.16 * r.compScore + 0.14 * r.growthScore;
+  });
+  return rows;
+}
+
+const supplyTable = rows => miniTable(
+  ["Market", { t: "Profile matches", n: 1 }, { t: "Strong (" + ENGINE_MATCH.strong + "%+)", n: 1 },
+   { t: "Master / PhD", n: 1 }, "Relevant Tier 1 schools", "Supply band"],
+  rows.slice().sort((a, b) => b.n - a.n).map(r => [
+    r.flag + " <b>" + esc(r.name) + "</b>",
+    r.n, r.strong, r.advanced,
+    r.tier1.length ? r.tier1.slice(0, 3).map(s => esc(s.abbr)).join(", ")
+                   : `<span class="sub-txt">none in the target list</span>`,
+    `<span class="lvl ${r.sig.supply === "High" ? "good" : r.sig.supply === "Low" ? "bad" : "mid"}">${esc(r.sig.supply || "—")}</span>`
+  ]));
+
+const budgetTable = (rows, want, role) => miniTable(
+  ["Market", "Graduate base (" + esc(role) + ")", { t: "Per hire", n: 1 },
+   { t: want + " hires", n: 1 }, { t: "Cost index", n: 1 }, "Employer on-costs"],
+  rows.slice().sort((a, b) => a.band.midUSD - b.band.midUSD).map(r => [
+    r.flag + " <b>" + esc(r.name) + "</b>",
+    money(r.band.lo) + "&ndash;" + money(r.band.hi) + " " + esc(r.currency),
+    usd(r.band.midUSD),
+    "<b>" + usd(r.band.midUSD * want) + "</b>",
+    r.costIndex,
+    `<span class="sub-txt">${esc(r.burden)}</span>`
+  ]));
+
+const SCENARIO_ANSWERS = {
+
+  /* ---------- 1 · which ASEAN country for N Applied Scientists ---------- */
+  "market-pick": function (q) {
+    const want = Math.max(1, Math.min(50,
+      Number((String(q).match(/\b(\d{1,2})\b/) || [])[1]) || 5));
+
+    const rows = marketFit(APPLIED_SCIENTIST, "Data / ML Engineer", RESEARCH_STRENGTHS);
+    const ranked = rows.slice().sort((a, b) => b.fit - a.fit);
+    const top = ranked[0], alt = ranked[1];
+    const dearest = rows.slice().sort((a, b) => b.band.midUSD - a.band.midUSD)[0];
+    const saving = (dearest.band.midUSD - top.band.midUSD) * want;
+    const grad = (top.cal.grad || {}).label || "—";
+    const intern = (top.cal.intern || [])[0] || {};
+
+    const hero = ansHero({
+      accent: "#0f6cbd", flag: top.flag, kicker: "Recommended country",
+      title: top.name + " — target it for all " + want + " Applied Scientist hires",
+      badge: `${Math.round(top.fit * 100)}<em>/100 fit</em>`,
+      lead: `${esc(top.name)} wins on the combination the role needs: a
+        <b>${esc(top.sig.supply || "—")}</b> talent-supply band with a
+        <b>${esc(top.sig.cost || "—")}</b> cost band, ${top.n} people already in your pools scoring
+        ${ENGINE_MATCH.good}%+ against an Applied Scientist profile, and ${top.advanced} of them holding a
+        Master's or PhD. ${esc(top.prof.headline || "")}`,
+      metrics: [
+        { v: String(top.n), k: "Research-capable candidates already in pool" },
+        { v: String(top.advanced), k: "Of those holding a Master's or PhD" },
+        { v: usd(top.band.midUSD), k: "Median graduate base · " + top.band.role },
+        { v: usd(top.band.midUSD * want), k: want + " hires, annual base before on-costs" }
+      ]
+    });
+
+    const why = ansSec("1", "Why this market", "", ansReasons([
+      { k: "Talent supply",
+        t: `${top.n} candidates in the talent pools clear the ${ENGINE_MATCH.good}% match floor for a
+            research profile and ${top.strong} clear ${ENGINE_MATCH.strong}%. The market carries a
+            ${esc(top.sig.supply || "—")} supply band against
+            ${(top.pipe.reachable || 0).toLocaleString()} addressable final-year students,
+            growing +${top.pipe.growth || 0}% year on year.` },
+      { k: "Research depth",
+        t: top.tier1.length
+          ? `${top.tier1.map(s => "<b>" + esc(s.abbr) + "</b>").join(", ")} carry
+             AI, data-science, CS or mathematics strengths on the target-school list —
+             ${top.advanced} postgraduate-level candidates sit behind them.`
+          : `Depth comes from the pool rather than the school list — ${top.advanced} postgraduate-level
+             candidates are already held.` },
+      { k: "Cost position",
+        t: `A graduate ${esc(top.band.role)} runs ${money(top.band.lo)}&ndash;${money(top.band.hi)}
+            ${esc(top.currency)} (${usd(top.band.loUSD)}&ndash;${usd(top.band.hiUSD)}) on a cost index of
+            ${top.costIndex} against Singapore at 100. Against the most expensive ASEAN market that is
+            roughly <b>${usd(saving)}</b> of annual base saved across ${want} hires.` },
+      { k: "Competition",
+        t: `Competition reads <b>${esc(top.sig.competition || "—")}</b>. ${esc(top.intel.note || "")}` },
+      { k: "Calendar fit",
+        t: `Graduation lands ${esc(grad)}${intern.label
+            ? `, and ${esc(intern.label.toLowerCase())} runs
+               ${MONTH_FULL[(intern.from || 1) - 1]}&ndash;${MONTH_FULL[(intern.to || 1) - 1]}`
+            : ""}. Offers have to be scoped a quarter earlier than that.` }
+    ]));
+
+    const supply = ansSec("2", "Talent supply analysis",
+      `Every candidate in the ${CAND.length.toLocaleString()}-record pool scored against an Applied
+       Scientist profile — AI, data-science, CS and mathematics majors with research-adjacent skills.`,
+      supplyTable(rows) + miniChart({
+        title: "Research-capable candidates in pool",
+        rows: rows.map(r => ({
+          v: r.n, on: r.code === top.code,
+          label: r.flag + " " + esc(r.name),
+          text: r.n + ` <em>${r.advanced} PG</em>`
+        })).sort((a, b) => b.v - a.v),
+        foot: `Match floor ${ENGINE_MATCH.good}%. "PG" counts Master's and PhD holders, the usual bar
+               for an Applied Scientist req.`
+      }));
+
+    const budget = ansSec("3", "Budget considerations",
+      `Annual base only, converted at the prototype's reference FX. On-costs are listed because they move
+       the real number by 5&ndash;21% depending on the market.`,
+      budgetTable(rows, want, "Data / ML Engineer") +
+      ansTake(`${want} Applied Scientists in ${esc(top.name)} costs about
+        <b>${usd(top.band.midUSD * want)}</b> of annual base, against
+        <b>${usd(dearest.band.midUSD * want)}</b> in ${esc(dearest.name)} — a
+        ${Math.round((1 - top.band.midUSD / dearest.band.midUSD) * 100)}% difference for the same
+        headcount. Budget ${esc(top.burden)} on top.`));
+
+    const altSec = ansSec("4", "Alternative market", "", `
+      <div class="ans-alt" style="--rc:#8b5cf6">
+        <div class="ans-alt-h"><span>${alt.flag}</span>
+          <div><h4>${esc(alt.name)}</h4>
+            <span class="sub-txt">${esc(alt.prof.positioning || alt.prof.headline || "")}</span></div>
+          <span class="ans-hero-badge">${Math.round(alt.fit * 100)}<em>/100</em></span></div>
+        <div class="rec-metrics">
+          <div class="rec-m"><span class="rec-m-v">${alt.n}</span>
+            <span class="rec-m-k">Research-capable candidates in pool</span></div>
+          <div class="rec-m"><span class="rec-m-v">${usd(alt.band.midUSD)}</span>
+            <span class="rec-m-k">Median graduate base · ${esc(alt.band.role)}</span></div>
+        </div>
+        <p class="rec-why"><b>Use it when:</b> ${alt.band.midUSD > top.band.midUSD
+          ? `you need the deeper or more English-ready bench and can carry roughly
+             ${Math.round((alt.band.midUSD / top.band.midUSD - 1) * 100)}% more base per hire`
+          : `you want to split risk — it is cheaper per hire but ${alt.n < top.n
+             ? "thinner on research-capable volume" : "less concentrated in the target schools"}`}.
+          Supply reads ${esc(alt.sig.supply || "—")}, cost ${esc(alt.sig.cost || "—")},
+          competition ${esc(alt.sig.competition || "—")}.</p>
+      </div>`);
+
+    const actions = ansSec("5", "Recommended actions", "", ansPlan([
+      { pri: "1", head: `Open the ${esc(top.name)} req against the ${top.n} candidates you already hold`,
+        why: `${top.strong} of them score ${ENGINE_MATCH.strong}%+ on the profile and
+              ${top.advanced} are postgraduate. They are sourced, consented and owned by a recruiter —
+              cheaper than any new channel.` },
+      { pri: "2", head: top.tier1.length
+          ? `Anchor the campaign on ${top.tier1.slice(0, 2).map(s => esc(s.abbr)).join(" and ")}`
+          : `Anchor the campaign on the Tier 1 schools in ${esc(top.name)}`,
+        why: `${esc((top.intel.channel || "Faculty-led sessions outperform general careers fairs."))}` },
+      { pri: "3", head: `Scope offers a quarter before ${esc(grad)}`,
+        why: `Graduation lands ${esc(grad)}. Research hires decide early, so an offer that arrives in the
+              graduation month arrives after the decision.` },
+      { pri: "4", head: `Budget ${usd(top.band.midUSD * want)} base plus on-costs`,
+        why: `${esc(top.burden)}. Hold ${usd((alt.band.midUSD - top.band.midUSD) * want > 0
+              ? (alt.band.midUSD - top.band.midUSD) * want : top.band.midUSD * 0.15)} of contingency if
+              you expect to flex into ${esc(alt.name)}.` },
+      { pri: "5", head: `Keep ${esc(alt.name)} as the second wave`,
+        why: `Do not run both markets on one timeline — the ASEAN graduation windows are a quarter apart
+              and a single calendar misses both.` }
+    ]));
+
+    return {
+      html: hero + why + supply + budget + altSec + actions,
+      chips: [
+        searchChip("Search " + top.name + " talent", { tab: "search", country: top.code }),
+        { text: "Open the " + top.name + " profile", run: () => openCountry(top.code) },
+        { text: "Where should we expand outside Vietnam?",
+          run: () => analyze(COPILOT_SCENARIOS[2].question) }
+      ]
+    };
+  },
+
+  /* ---------- 2 · top 3 CSAM candidates in the Malaysian talent pool ---------- */
+  "candidate-shortlist": function (q) {
+    const t = String(q).toLowerCase();
+    const market = CC_ORDER.find(code => t.indexOf(cc(code).name.toLowerCase()) >= 0) || "MY";
+    const want = Math.max(1, Math.min(10,
+      Number((t.match(/top\s+(\d{1,2})/) || [])[1]) || 3));
+
+    const profile = fnById("custsuccess");
+    const CLIENT_SKILLS = ENGINE_SKILL_GROUPS.customer
+      .concat(ENGINE_SKILL_GROUPS.commercial)
+      .filter((s, i, a) => a.indexOf(s) === i);
+
+    const scored = CAND.filter(c => c.country === market).map(c => {
+      const s = score(c, profile, []);
+      const yrs = Math.max(0, THIS_YEAR - c.gradYear);
+      const clientSkills = c.skills.filter(k => CLIENT_SKILLS.indexOf(k) >= 0);
+      const pool = TALENT_POOLS.find(p => p.id === c.pool) || {};
+      const commercial = pool.family === "Commercial";
+      const home = c.pool === profile.pool;
+
+      /* Weights follow the stated ranking priority:
+       * 1 experience window, 2 client-facing evidence, 3 school, 4 role relevance. */
+      const expPts    = yrs <= 2 ? 40 : Math.max(0, 40 - (yrs - 2) * 14);
+      const clientPts = Math.min(20, clientSkills.length * 6) + (commercial ? 8 : 0) + (home ? 6 : 0);
+      const schoolPts = (c.tier === 1 ? 20 : c.tier === 2 ? 13 : 6) + (isHiPo(c) ? 2 : 0);
+      const rolePts   = Math.round(s.score * 0.16);
+
+      return {
+        c: c, s: s, yrs: yrs, clientSkills: clientSkills, commercial: commercial, home: home,
+        expPts: expPts, clientPts: clientPts, schoolPts: schoolPts, rolePts: rolePts,
+        total: expPts + clientPts + schoolPts + rolePts
+      };
+    }).sort((a, b) =>
+      b.total - a.total || b.clientPts - a.clientPts || b.s.score - a.s.score ||
+      b.c.relevance - a.c.relevance);
+
+    const picks = scored.slice(0, want);
+    const fit = x => Math.round(x.total / 112 * 100);
+    const expText = x => x.c.gradYear > THIS_YEAR
+      ? "0 yrs &middot; graduates " + esc(x.c.gradLabel)
+      : x.yrs + (x.yrs === 1 ? " yr" : " yrs") + " &middot; graduated " + esc(x.c.gradLabel);
+
+    const crit = x => {
+      const items = [
+        { ok: x.yrs <= 2, k: "0–2 years experience",
+          t: x.c.gradYear > THIS_YEAR
+            ? "Pre-graduation, graduates " + esc(x.c.gradLabel)
+            : x.yrs + " year(s) since graduation" },
+        { ok: x.clientSkills.length > 0 || x.commercial, k: "Prior client-facing experience",
+          t: x.clientSkills.length
+            ? x.clientSkills.slice(0, 3).map(esc).join(", ")
+            : (x.commercial ? "Held in a client-facing commercial pool" : "No client-facing signal recorded") },
+        { ok: x.c.tier <= 2, k: "Top school",
+          t: "Tier " + x.c.tier + " · " + esc(x.c.schoolAbbr) + (x.c.tier === 1 ? " (priority)" : "") },
+        { ok: x.s.score >= ENGINE_MATCH.good, k: "Role relevance (CSAM profile)",
+          t: x.s.score + "% match" + (x.home ? " · already in the Customer Success pool" : " · " + esc(poolShort(x.c.pool)) + " pool") }
+      ];
+      return `<ul class="sc-crit">${items.map(i =>
+        `<li class="${i.ok ? "ok" : "no"}"><span>${i.ok ? "&#10003;" : "&#9675;"}</span>
+          <b>${esc(i.k)}</b><i>${i.t}</i></li>`).join("")}</ul>`;
+    };
+
+    const reason = x => {
+      const bits = [];
+      bits.push(x.c.gradYear > THIS_YEAR
+        ? `Graduates ${esc(x.c.gradLabel)}, so the whole 0&ndash;2 year window is still ahead of them`
+        : `${x.yrs} year(s) out of ${esc(x.c.schoolAbbr)}, inside the 0&ndash;2 year window`);
+      if (x.clientSkills.length)
+        bits.push(`carries ${x.clientSkills.length} client-facing skill${x.clientSkills.length > 1 ? "s" : ""}
+          (${x.clientSkills.slice(0, 3).map(esc).join(", ")})`);
+      if (x.commercial)
+        bits.push(`already sits in the ${esc(poolShort(x.c.pool))} pool, a client-facing function`);
+      bits.push(`Tier ${x.c.tier} ${esc(x.c.schoolAbbr)}`);
+      bits.push(`${x.s.score}% against the Customer Success profile`);
+      return bits.join(", ") + `. Currently <b>${esc(POOL_STAGES[x.c.stageIndex].label)}</b> with
+        ${esc(x.c.recruiter)}${x.c.updated <= -30
+          ? `, and untouched for ${Math.abs(x.c.updated)} days — contact before the pipeline cools`
+          : `, and recently active`}.`;
+    };
+
+    const cards = picks.map((x, i) => `
+      <article class="sc-cand" style="--rc:${i === 0 ? "#0f6cbd" : i === 1 ? "#8b5cf6" : "#12a594"}">
+        <header class="sc-cand-h">
+          <span class="sc-rank">${i + 1}</span>
+          <div class="sc-id">
+            <h4>${esc(x.c.name)}</h4>
+            <span class="sub-txt">${cc(x.c.country).flag} ${esc(cc(x.c.country).name)} &middot;
+              ${esc(poolShort(x.c.pool))} pool &middot; ${esc(x.c.id)}</span>
+          </div>
+          <span class="ans-hero-badge">${fit(x)}<em>/100</em></span>
+        </header>
+        <div class="cand-facts">
+          <div><span>University</span>${esc(x.c.school)} (Tier ${x.c.tier})</div>
+          <div><span>Years of experience</span>${expText(x)}</div>
+          <div><span>Degree</span>${esc(x.c.degree)}</div>
+          <div><span>Pool stage</span>${esc(POOL_STAGES[x.c.stageIndex].label)} &middot;
+            owner ${esc(x.c.recruiter)}</div>
+        </div>
+        <div class="sc-block">
+          <h5>Relevant experience</h5>
+          <p>${x.clientSkills.length
+              ? "Client-facing skills recorded against the record: " +
+                x.clientSkills.map(esc).join(", ") + "."
+              : "No explicit client-facing skills recorded; evidence is the pool they sit in."}
+            Sourced via <b>${esc(x.c.source)}</b>, in pool for ${Math.abs(x.c.added)} days.</p>
+          <div class="cand-skills">${x.c.skills.map(s =>
+            `<span class="chip sm ${CLIENT_SKILLS.indexOf(s) >= 0 ? "on" : ""}">${esc(s)}</span>`).join("")}</div>
+        </div>
+        <div class="sc-block">
+          <h5>Match criteria</h5>
+          ${crit(x)}
+        </div>
+        <div class="sc-block why">
+          <h5>Recommendation reason</h5>
+          <p>${reason(x)}</p>
+        </div>
+      </article>`).join("");
+
+    const next = scored.slice(want, want + 4).map(x => [
+      "<b>" + esc(x.c.name) + "</b>",
+      esc(x.c.schoolAbbr) + " <span class='sub-txt'>T" + x.c.tier + "</span>",
+      x.c.gradYear > THIS_YEAR ? "0 yrs" : x.yrs + " yrs",
+      x.clientSkills.length ? x.clientSkills.slice(0, 2).map(esc).join(", ")
+                            : "<span class='sub-txt'>pool evidence only</span>",
+      x.s.score + "%",
+      fit(x)
+    ]);
+
+    const scanned = CAND.filter(c => c.country === market).length;
+    const inHome = CAND.filter(c => c.country === market && c.pool === profile.pool).length;
+
+    const head = ansHero({
+      accent: "#e0a33c", flag: cc(market).flag, kicker: "Top " + want + " candidates · Talent Pool",
+      title: "Customer Success Account Manager — " + cc(market).name,
+      badge: want + "<em> of " + scanned + "</em>",
+      lead: `Ranked against your stated criteria, in priority order: <b>0&ndash;2 years experience</b>,
+        then <b>client-facing experience</b>, then <b>top school</b>, then <b>role relevance</b>.
+        Only people already stored in the talent pools are considered — ${scanned} ${esc(cc(market).name)}
+        records across ${TALENT_POOLS.length} pools, ${inHome} of them in the
+        ${esc(poolShort(profile.pool))} pool itself.`,
+      metrics: [
+        { v: String(scanned), k: cc(market).name + " records scanned across all pools" },
+        { v: String(picks.filter(x => x.c.tier === 1).length) + " <em>/ " + want + "</em>",
+          k: "Shortlisted from a Tier 1 school" },
+        { v: String(picks.filter(x => x.clientSkills.length).length) + " <em>/ " + want + "</em>",
+          k: "With recorded client-facing skills" },
+        { v: Math.round(picks.reduce((n, x) => n + x.s.score, 0) / picks.length) + "%",
+          k: "Average match against the CSAM profile" }
+      ]
+    });
+
+    return {
+      html: head +
+        ansSec("1", "Top " + want + " candidates",
+          "Every field below is read from the talent-pool record — nothing is invented at answer time.",
+          `<div class="sc-cands">${cards}</div>`) +
+        ansSec("2", "How the ranking was applied",
+          "Your four criteria, weighted in the order you gave them.",
+          miniTable(["Priority", "Criterion", "Weight", "How it is read from the data"], [
+            ["<b>1</b>", "0–2 years experience", "40 pts",
+             "Graduation year against the current year; future graduates count as 0 years"],
+            ["<b>2</b>", "Client-facing experience", "34 pts",
+             "Customer and commercial skill groups on the record, plus the pool family they sit in"],
+            ["<b>3</b>", "Top school", "22 pts", "Target-school tier, with a high-potential bonus"],
+            ["<b>4</b>", "Role relevance", "16 pts",
+             "Match score against the Customer Success profile (major, skills, tier, standing)"]
+          ]) + ansTake(`the shortlist is a follow-up job, not a sourcing job —
+            all ${want} are already in pool and already owned by a recruiter.`)) +
+        ansSec("3", "Also considered", "The next best records, if any of the top three decline.",
+          next.length ? miniTable(["Candidate", "School", "Experience", "Client-facing signal",
+                                   { t: "CSAM match", n: 1 }, { t: "Fit", n: 1 }], next)
+                      : `<p class="sub-txt">No further records clear the criteria in this market.</p>`),
+      chips: [
+        searchChip("Open " + cc(market).name + " Customer Success in search",
+          { tab: "search", title: profile.titles[0], country: market }),
+        searchChip("Open " + picks[0].c.schoolAbbr + " in search",
+          { tab: "search", uni: picks[0].c.schoolAbbr }),
+        { text: "Which country should I target for Applied Scientists?",
+          run: () => analyze(COPILOT_SCENARIOS[0].question) }
+      ]
+    };
+  },
+
+  /* ---------- 3 · the next market outside Vietnam ---------- */
+  "expansion": function (q) {
+    const t = String(q).toLowerCase();
+    const base = CC_ORDER.find(code =>
+      hasKeyword(t, "outside " + cc(code).name.toLowerCase()) ||
+      hasKeyword(t, "beyond " + cc(code).name.toLowerCase())) || "VN";
+
+    const rows = marketFit(fnById("swe"), "Software Engineer", SOFTWARE_STRENGTHS);
+    const home = rows.find(r => r.code === base);
+    const ranked = rows.filter(r => r.code !== base).sort((a, b) => b.fit - a.fit);
+    const top = ranked[0], second = ranked[1];
+    const grad = (top.cal.grad || {}).label || "—";
+    const intern = (top.cal.intern || [])[0] || {};
+    const costDelta = Math.round((top.band.midUSD / home.band.midUSD - 1) * 100);
+
+    const hero = ansHero({
+      accent: "#31b57a", flag: top.flag, kicker: "Recommended next country",
+      title: top.name + " — the next market after " + home.name,
+      badge: `${Math.round(top.fit * 100)}<em>/100 fit</em>`,
+      lead: `Outside ${esc(home.name)}, ${esc(top.name)} scores highest on the two lenses asked for.
+        Talent supply: ${esc(top.sig.supply || "—")} band,
+        ${(top.pipe.reachable || 0).toLocaleString()} addressable students and ${top.n} engineering-capable
+        candidates already in pool. Budget: cost index ${top.costIndex} against Singapore at 100, a
+        median graduate base of ${usd(top.band.midUSD)}. ${esc(top.prof.headline || "")}`,
+      metrics: [
+        { v: (top.pipe.reachable || 0).toLocaleString(), k: "Addressable final-year students" },
+        { v: "+" + (top.pipe.growth || 0) + "%", k: "Pipeline growth year on year" },
+        { v: usd(top.band.midUSD), k: "Median graduate base · " + top.band.role },
+        { v: pct(top.stat.coverage) + "%", k: "Target-school coverage · " + top.stat.covered + "/" + top.stat.schools }
+      ]
+    });
+
+    const supply = ansSec("1", "Talent supply analysis",
+      `All six markets scored on the same software-engineering profile, so ${esc(home.name)} stays in the
+       table as the reference line.`,
+      supplyTable(rows) +
+      miniChart({
+        title: "Addressable pipeline and growth",
+        rows: rows.map(r => ({
+          v: r.pipe.reachable || 0,
+          on: r.code === top.code, ref: r.code === base,
+          label: r.flag + " " + esc(r.name),
+          text: (r.pipe.reachable || 0).toLocaleString() + ` <em>+${r.pipe.growth || 0}%</em>`
+        })).sort((a, b) => b.v - a.v),
+        foot: `${esc(top.name)}: ${esc(top.prof.summary ? top.prof.summary.split(".")[0] + "." :
+          (top.pipe.strength || ""))}`
+      }) +
+      ansTake(`${esc(top.name)} holds ${top.stat.poolCount} candidates in pool with
+        ${top.stat.hi} high potentials, and ${top.schools.length} of its target schools carry relevant
+        academic strengths. ${esc(top.pipe.strength || "")}`));
+
+    const budget = ansSec("2", "Budget analysis",
+      "Annual graduate base, converted at the prototype's reference FX, with the employer on-costs that " +
+      "change the landed number.",
+      budgetTable(rows, 10, "Software Engineer") +
+      ansTake(`${esc(top.name)} runs ${costDelta >= 0 ? costDelta + "% above" : Math.abs(costDelta) + "% below"}
+        ${esc(home.name)} per graduate hire (${usd(top.band.midUSD)} against ${usd(home.band.midUSD)}).
+        ${costDelta >= 0
+          ? `Over 10 hires that is ${usd((top.band.midUSD - home.band.midUSD) * 10)} of extra annual base —
+             the price of a second market, and it buys
+             ${(top.pipe.reachable || 0).toLocaleString()} more addressable students and a different
+             graduation calendar.`
+          : `Over 10 hires that is ${usd((home.band.midUSD - top.band.midUSD) * 10)} of annual base saved
+             while adding a second calendar.`}
+        Add ${esc(top.burden)}.`));
+
+    const cmpRows = [
+      ["<b>Talent supply band</b>", esc(top.sig.supply || "—"), esc(home.sig.supply || "—")],
+      ["<b>Addressable students</b>", (top.pipe.reachable || 0).toLocaleString(),
+       (home.pipe.reachable || 0).toLocaleString()],
+      ["<b>Pipeline growth YoY</b>", "+" + (top.pipe.growth || 0) + "%", "+" + (home.pipe.growth || 0) + "%"],
+      ["<b>Candidates in pool</b>", top.stat.poolCount.toLocaleString(), home.stat.poolCount.toLocaleString()],
+      ["<b>Profile matches in pool</b>", String(top.n), String(home.n)],
+      ["<b>Target-school coverage</b>", pct(top.stat.coverage) + "%", pct(home.stat.coverage) + "%"],
+      ["<b>Cost index (SG = 100)</b>", String(top.costIndex), String(home.costIndex)],
+      ["<b>Median graduate base</b>", usd(top.band.midUSD), usd(home.band.midUSD)],
+      ["<b>Competition band</b>", esc(top.sig.competition || "—"), esc(home.sig.competition || "—")],
+      ["<b>Graduation window</b>", esc((top.cal.grad || {}).label || "—"),
+       esc((home.cal.grad || {}).label || "—")]
+    ];
+
+    const compare = ansSec("3", "Comparison with " + home.name,
+      "Head to head on the signals that decide a second market.",
+      miniTable(["Signal", top.flag + " " + esc(top.name), home.flag + " " + esc(home.name)], cmpRows) +
+      ansTake(`${esc(home.name)} is not being replaced — it stays the volume engine at
+        ${usd(home.band.midUSD)} per graduate hire. ${esc(top.name)} is the hedge: a different
+        graduation calendar (${esc((top.cal.grad || {}).label || "—")} against
+        ${esc((home.cal.grad || {}).label || "—")}) and a separate talent body, so one market's
+        bad season cannot stall the whole plan.`));
+
+    const risks = [
+      { k: costDelta >= 0 ? "Cost step-up" : "Cost advantage",
+        t: costDelta >= 0
+          ? `Each hire costs ${costDelta}% more than ${esc(home.name)}. Mitigate by keeping volume roles in
+             ${esc(home.name)} and using ${esc(top.name)} for the profiles it is genuinely better at.`
+          : `Cheaper per hire than ${esc(home.name)}, which usually means the constraint is elsewhere —
+             check conversion, not cost.` },
+      { k: "Competition",
+        t: `Competition reads ${esc(top.sig.competition || "—")}${top.sig.competition === "High"
+            ? " — you will be bidding against every global employer on the same campuses, so speed of engagement matters more than spend"
+            : " — the window is open, but it will not stay open as other employers scale in"}.` },
+      { k: "Coverage debt",
+        t: `Only ${top.stat.covered} of ${top.stat.schools} target schools in ${esc(top.name)} hold a
+            working pipeline (${pct(top.stat.coverage)}%). Entering a market you have not covered costs
+            relationship time before it costs budget.` },
+      { k: "Operating friction",
+        t: esc(top.intel.note || top.prof.positioning || "") }
+    ];
+
+    const riskSec = ansSec("4", "Risks and trade-offs", "", ansReasons(
+      risks.map(r => ({ k: r.k, t: r.t }))));
+
+    const actions = ansSec("5", "Recommended actions", "", ansPlan([
+      { pri: "1", head: `Pilot ${esc(top.name)} with a bounded first cohort`,
+        why: `Run a single-digit intake against the ${top.n} candidates already in pool before committing
+              a headcount plan. ${top.stat.hi} of the ${top.stat.poolCount} records are high potential.` },
+      { pri: "2", head: top.tier1.length
+          ? `Open faculty relationships at ${top.tier1.slice(0, 2).map(s => esc(s.abbr)).join(" and ")}`
+          : `Open faculty relationships at the Tier 1 schools in ${esc(top.name)}`,
+        why: esc(top.intel.channel || "Faculty-led sessions outperform general campus fairs.") },
+      { pri: "3", head: `Run the ${esc(top.name)} calendar separately from ${esc(home.name)}`,
+        why: `${esc(top.name)} graduates ${esc(grad)}${intern.label
+              ? ` and ${esc(intern.label.toLowerCase())} runs ${MONTH_FULL[(intern.from || 1) - 1]}&ndash;${MONTH_FULL[(intern.to || 1) - 1]}`
+              : ""}, against ${esc((home.cal.grad || {}).label || "—")} in ${esc(home.name)}.
+              One shared timeline misses both.` },
+      { pri: "4", head: `Hold ${esc(second.name)} as the fallback`,
+        why: `Second on the combined score (${Math.round(second.fit * 100)}/100) with
+              ${(second.pipe.reachable || 0).toLocaleString()} addressable students at
+              ${usd(second.band.midUSD)} per graduate hire. Re-run the comparison if
+              ${esc(top.name)} coverage does not move within two intakes.` },
+      { pri: "5", head: `Keep ${esc(home.name)} as the volume engine`,
+        why: `${home.n} profile matches, ${pct(home.stat.coverage)}% school coverage and the cheapest
+              base in the comparison. Expansion is about resilience, not replacement.` }
+    ]));
+
+    return {
+      html: hero + supply + budget + compare + riskSec + actions,
+      chips: [
+        searchChip("Search " + top.name + " talent", { tab: "search", country: top.code }),
+        { text: "Open the " + top.name + " profile", run: () => openCountry(top.code) },
+        { text: "Shortlist CSAM candidates in Malaysia",
+          run: () => analyze(COPILOT_SCENARIOS[1].question) }
+      ]
     };
   }
 };
